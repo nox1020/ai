@@ -79,9 +79,10 @@ fun ChatWindow(vm: MainViewModel, openDrawer: () -> Unit) {
                     Text(headerDate(msgs), color = C.zinc500, fontSize = 11.sp, fontWeight = FontWeight.Medium)
                 }
             }
-            items(myApprovals, key = { it.requestId }) { ApprovalCard(it) { a -> vm.respondApproval(it.requestId, a) } }
-            items(myEvents, key = { it.id }) { ToolEventCard(it) }
-            items(msgs, key = { it.id }) { MessageItem(it) }
+            items(msgs, key = { "message-${it.id}" }) { MessageItem(it) }
+            items(myEvents, key = { "event-${it.id}" }) { ToolEventCard(it) }
+            // Active approval cards must appear at the bottom, where the user can reach them.
+            items(myApprovals, key = { "approval-${it.requestId}" }) { ApprovalCard(it) { a -> vm.respondApproval(it.requestId, a) } }
             if (stream != null) item {
                 if (stream.isEmpty()) TypingIndicator() else MessageItem(Message(botId = 0, role = "bot", content = stream, ts = 0))
             }
@@ -268,6 +269,7 @@ fun TypingIndicator() {
 @Composable
 fun Composer(vm: MainViewModel, bot: Bot?, streaming: Boolean) {
     var input by remember { mutableStateOf("") }
+    val busy by vm.busy.collectAsState()
     val noVision = stringResource(R.string.no_vision)
     val noVoice = stringResource(R.string.no_voice)
     val speech = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
@@ -279,18 +281,22 @@ fun Composer(vm: MainViewModel, bot: Bot?, streaming: Boolean) {
         Box(Modifier.weight(1f).padding(vertical = 10.dp)) {
             if (input.isEmpty()) Text(stringResource(R.string.message_bot, bot?.name ?: "OGBA"), color = C.zinc500, fontSize = 13.sp)
             BasicTextField(input, { input = it }, textStyle = TextStyle(color = C.foreground, fontSize = 13.sp), cursorBrush = SolidColor(C.zinc300), maxLines = 6,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send), keyboardActions = KeyboardActions(onSend = { vm.send(input); input = "" }), modifier = Modifier.fillMaxWidth())
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send), keyboardActions = KeyboardActions(onSend = { if (vm.send(input)) input = "" }), modifier = Modifier.fillMaxWidth())
         }
-        if (input.isBlank() && !streaming) {
+        if (busy) {
+            IconButton(onClick = { vm.stop() }, Modifier.size(36.dp).background(C.cardActive, CircleShape)) {
+                Icon(Icons.Default.Close, null, tint = Color.White, modifier = Modifier.size(16.dp))
+            }
+        } else if (input.isBlank()) {
             IconButton(onClick = {
                 try {
                     speech.launch(Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM).putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true))
                 } catch (e: ActivityNotFoundException) { vm.toast.value = noVoice }
             }, Modifier.size(36.dp)) { Icon(Icons.Default.Phone, stringResource(R.string.dictate), tint = C.zinc400) }
-        } else if (streaming) {
-            IconButton(onClick = { vm.stop() }, Modifier.size(36.dp).background(C.cardActive, CircleShape)) { Icon(Icons.Default.Close, null, tint = Color.White, modifier = Modifier.size(16.dp)) }
         } else {
-            IconButton(onClick = { vm.send(input); input = "" }, Modifier.size(36.dp).background(Color.White, CircleShape)) { Icon(Icons.Default.Send, null, tint = Color.Black, modifier = Modifier.size(16.dp)) }
+            IconButton(onClick = { if (vm.send(input)) input = "" }, Modifier.size(36.dp).background(Color.White, CircleShape)) {
+                Icon(Icons.Default.Send, null, tint = Color.Black, modifier = Modifier.size(16.dp))
+            }
         }
     }
 }
