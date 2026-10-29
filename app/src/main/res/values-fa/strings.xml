@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">OGBA</string>
+    <string name="tab_chat">گفتگو</string>
+    <string name="tab_bots">بات‌ها</string>
+    <string name="tab_memory">حافظه</string>
+    <string name="tab_routines">روتین‌ها</string>
+    <string name="tab_models">مدل‌ها</string>
+    <string name="tool_approval">تأیید ابزار</string>
+    <string name="tool_wants">دستیار می‌خواهد ابزار محلی «%1$s» را اجرا کند:</string>
+    <string name="approve">تأیید</string>
+    <string name="deny">رد</string>
+    <string name="no_model">هیچ مدلی نصب نیست. ابتدا یک مدل GGUF دانلود یا وارد کنید.</string>
+    <string name="clear_chat">پاک کردن گفتگو</string>
+    <string name="type_message">پیام… (/calc /time /note /notes /remember)</string>
+    <string name="stop">توقف</string>
+    <string name="send">ارسال</string>
+    <string name="new_bot">بات جدید</string>
+    <string name="edit_bot">بات</string>
+    <string name="name">نام</string>
+    <string name="system_prompt">دستور سیستمی</string>
+    <string name="save">ذخیره</string>
+    <string name="cancel">انصراف</string>
+    <string name="memory_title">حافظه‌ی بات فعلی</string>
+    <string name="memory_hint">این موارد به زمینه‌ی بات اضافه می‌شوند. در گفتگو هم می‌توانید /remember بنویسید.</string>
+    <string name="add_memory">افزودن یک نکته…</string>
+    <string name="notes_title">یادداشت‌ها (ابزار note)</string>
+    <string name="routine_hint">روتین‌ها دستور را به‌صورت دوره‌ای (حداقل ۱۵ دقیقه) روی مدل محلی برای بات فعلی اجرا و به شما اعلان می‌دهند.</string>
+    <string name="routine_prompt">دستور</string>
+    <string name="interval_min">فاصله (دقیقه)</string>
+    <string name="add_routine">افزودن روتین</string>
+    <string name="installed_models">مدل‌های نصب‌شده</string>
+    <string name="import_gguf">وارد کردن فایل ‎.gguf</string>
+    <string name="download_models">دانلود مدل‌ها</string>
+    <string name="download_hint">یک بار از Hugging Face دانلود می‌شود؛ پس از آن همه‌چیز آفلاین روی گوشی اجرا می‌شود.</string>
+    <string name="download">دانلود</string>
+</resources>

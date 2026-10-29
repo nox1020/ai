@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">OGBA</string>
+    <string name="tab_chat">Chat</string>
+    <string name="tab_bots">Bots</string>
+    <string name="tab_memory">Memory</string>
+    <string name="tab_routines">Routines</string>
+    <string name="tab_models">Models</string>
+    <string name="tool_approval">Tool approval</string>
+    <string name="tool_wants">The assistant wants to run the local tool “%1$s”:</string>
+    <string name="approve">Approve</string>
+    <string name="deny">Deny</string>
+    <string name="no_model">No model installed. Download or import a GGUF model first.</string>
+    <string name="clear_chat">Clear chat</string>
+    <string name="type_message">Message… (/calc /time /note /notes /remember)</string>
+    <string name="stop">Stop</string>
+    <string name="send">Send</string>
+    <string name="new_bot">New bot</string>
+    <string name="edit_bot">Bot</string>
+    <string name="name">Name</string>
+    <string name="system_prompt">System prompt</string>
+    <string name="save">Save</string>
+    <string name="cancel">Cancel</string>
+    <string name="memory_title">Memory of current bot</string>
+    <string name="memory_hint">Facts here are added to the bot\'s context. You can also type /remember in chat.</string>
+    <string name="add_memory">Add a fact…</string>
+    <string name="notes_title">Notes (note tool)</string>
+    <string name="routine_hint">Routines run the prompt on the local model periodically (min 15 min) for the current bot and notify you.</string>
+    <string name="routine_prompt">Prompt</string>
+    <string name="interval_min">Interval (minutes)</string>
+    <string name="add_routine">Add routine</string>
+    <string name="installed_models">Installed models</string>
+    <string name="import_gguf">Import .gguf file</string>
+    <string name="download_models">Download models</string>
+    <string name="download_hint">Downloaded once from Hugging Face; then everything runs offline on your device.</string>
+    <string name="download">Download</string>
+</resources>
