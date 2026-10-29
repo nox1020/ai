@@ -21,6 +21,17 @@ All inference runs on-device with [llama.cpp](https://github.com/ggml-org/llama.
 ### Parity with open-grok-bot
 UI, theme (zinc/dark palette, mascot avatars, pill composer, Permission Broker approval cards, tool-event cards, audit trail, plugins, settings) and chat flow (`Current Date & Time` system-prompt prefix, `/workspace list|read|write` command grammar, request → approve/deny/expire → tool context → streamed reply) are re-implemented natively in Compose. The upstream repo has no LICENSE file, so its code is not copied verbatim; behaviour and design are reproduced. Cloud-only parts (MUAPI, Composio connectors, Docker computer provider, image upload) are shown as "Unavailable offline".
 
+
+### Agent, internet & computer (v0.1.6+)
+- Multi-step agent loop (plan → tool → observation → repeat, max steps configurable) with step/tool cards.
+- Tools: `web.search` (DuckDuckGo HTML, no key), `web.fetch` (readable text), `browser.open` / `browser.read` (in-app WebView you can watch), `shell.run` (OGBA computer), `workspace.*`, `intent.open_url`, `intent.share`, `clipboard.*`, `alarm.set`, `calendar.add`, `calc`, `time`, `note(s)`.
+- Read-only tools can auto-run (Settings → Agent); anything with side effects always shows an approval card. Offline chat works without network.
+- **Computer**: Alpine Linux minirootfs run with proot in app storage (downloaded on first use; `apk add python3` etc.), with a terminal view. Falls back to the Android shell. Requires `targetSdk 28` (sideload only, like Termux F-Droid).
+- Slash commands: `/search`, `/fetch`, `/browse`, `/sh`, `/workspace …`, `/calc`, `/time`, `/note`, `/notes`, `/remember`.
+
+### Updates
+Since v0.1.6 every APK is signed with the same release key, so new versions install over old ones and keep your data. Builds ≤ v0.1.4 used a throwaway debug key: uninstall those once.
+
 ### Install
 Download `ogba.apk` from the [latest release](https://github.com/nox1020/ai/releases/latest). arm64 phones (and x86_64 emulators), Android 8.0+. Recommended: ≥4 GB RAM; start with Qwen2.5 0.5B.
 
