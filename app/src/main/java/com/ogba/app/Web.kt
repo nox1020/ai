@@ -140,11 +140,11 @@ object Browser {
     /** Numbered link list also supports click @INDEX for pages without stable CSS selectors. */
     suspend fun links(): String {
         val script = """(function() {
-            return Array.from(document.querySelectorAll('a,button,input[type=submit]')).slice(0,80)
-                .map(function(e,i) { return {index:i, text:(e.innerText||e.value||e.getAttribute('aria-label')||'').trim().slice(0,100), href:e.href||''}; });
+            return JSON.stringify(Array.from(document.querySelectorAll('a,button,input[type=submit]')).slice(0,80)
+                .map(function(e,i) { return {index:i, text:(e.innerText||e.value||e.getAttribute('aria-label')||'').trim().slice(0,100), href:e.href||''}; }));
         })()"""
         val raw = evaluate(script)
-        val data = try { JSONArray("[$raw]").getJSONArray(0) } catch (_: Exception) { return "No clickable elements found" }
+        val data = try { JSONArray(JSONArray("[$raw]").getString(0)) } catch (_: Exception) { return "No clickable elements found" }
         return data.toString().take(4000)
     }
 
