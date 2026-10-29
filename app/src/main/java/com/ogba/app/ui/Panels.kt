@@ -211,6 +211,26 @@ fun SettingsPanel(vm: MainViewModel) {
                     Text(stringResource(R.string.max_steps, steps), color = C.foreground, fontSize = 13.sp, modifier = Modifier.padding(top = 10.dp))
                     Slider(steps.toFloat(), { vm.setMaxSteps(it.toInt()) }, valueRange = 1f..12f, steps = 10)
                 }
+                SectionTitle(stringResource(R.string.performance).uppercase())
+                val gpu by vm.gpuOn.collectAsState(); val layers by vm.gpuLayers.collectAsState(); val flash by vm.flashAttn.collectAsState()
+                DarkCard {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text(stringResource(R.string.gpu_accel), color = C.foreground, fontSize = 13.sp)
+                            Text(if (com.ogba.app.llm.LlmEngine.hasGpu) stringResource(R.string.gpu_desc) else stringResource(R.string.gpu_none), color = C.zinc500, fontSize = 11.sp)
+                        }
+                        Switch(gpu, { vm.setPerf(gpu = it) }, enabled = com.ogba.app.llm.LlmEngine.hasGpu)
+                    }
+                    if (gpu) {
+                        Text(stringResource(R.string.gpu_layers, layers), color = C.foreground, fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
+                        Slider(layers.toFloat(), { vm.setPerf(layers = it.toInt()) }, valueRange = 0f..99f)
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 8.dp)) {
+                        Column(Modifier.weight(1f)) { Text(stringResource(R.string.flash_attn), color = C.foreground, fontSize = 13.sp); Text(stringResource(R.string.flash_desc), color = C.zinc500, fontSize = 11.sp) }
+                        Switch(flash, { vm.setPerf(flash = it) })
+                    }
+                    Text(com.ogba.app.llm.LlmEngine.backends.take(600), color = C.zinc500, fontSize = 10.sp, fontFamily = FontFamily.Monospace, modifier = Modifier.padding(top = 8.dp))
+                }
                 SectionTitle(stringResource(R.string.local_data).uppercase())
                 SettingsRow(stringResource(R.string.memory_title), "") { vm.open(Screen.Memory) }
                 SettingsRow(stringResource(R.string.routines), "") { vm.open(Screen.Routines) }
@@ -277,7 +297,7 @@ fun ModelsPanel(vm: MainViewModel) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
                             Text(m.title, color = C.foreground, fontSize = 13.sp)
-                            Text("Q4_K_M · ~${m.sizeMb} MB · " + stringResource(R.string.ram_hint, m.ramGb) + (if (m.note.isNotEmpty()) " · ${m.note}" else ""), color = if (ram + 0.3f < m.ramGb) C.rose400 else C.zinc500, fontSize = 11.sp)
+                            Text("Q4_0 · ~${m.sizeMb} MB · " + stringResource(R.string.ram_hint, m.ramGb) + (if (m.note.isNotEmpty()) " · ${m.note}" else ""), color = if (ram + 0.3f < m.ramGb) C.rose400 else C.zinc500, fontSize = 11.sp)
                         }
                         if (have) Badge(stringResource(R.string.ready), C.emerald)
                         else if (p == null) Button(onClick = { vm.download(m) }, colors = ButtonDefaults.buttonColors(containerColor = C.blue)) { Text(stringResource(R.string.download), fontSize = 12.sp) }

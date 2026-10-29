@@ -6,7 +6,7 @@ on:
 permissions:
   contents: write
 env:
-  LLAMA_CPP_TAG: b5600
+  LLAMA_CPP_TAG: v0.8.0
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -16,6 +16,20 @@ jobs:
         with: { distribution: temurin, java-version: '17' }
       - uses: gradle/actions/setup-gradle@v4
         with: { gradle-version: '8.9' }
+      - name: Install NDK 29 + CMake 3.31.6
+        run: |
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --install "ndk;29.0.13113456" "cmake;3.31.6" > /dev/null
+          echo "ANDROID_NDK_ROOT_29=$ANDROID_HOME/ndk/29.0.13113456" >> "$GITHUB_ENV"
+      - name: Vulkan + SPIR-V headers (for the GPU backend)
+        if: ${{ !contains(github.event.head_commit.message, '[no-vulkan]') }}
+        run: |
+          P=$RUNNER_TEMP/vk
+          git clone --depth 1 https://github.com/KhronosGroup/Vulkan-Headers $RUNNER_TEMP/vh
+          git clone --depth 1 https://github.com/KhronosGroup/SPIRV-Headers $RUNNER_TEMP/sh
+          cmake -S $RUNNER_TEMP/vh -B $RUNNER_TEMP/vh/b -DCMAKE_INSTALL_PREFIX=$P >/dev/null && cmake --install $RUNNER_TEMP/vh/b >/dev/null
+          cmake -S $RUNNER_TEMP/sh -B $RUNNER_TEMP/sh/b -DCMAKE_INSTALL_PREFIX=$P -DSPIRV_HEADERS_ENABLE_TESTS=OFF >/dev/null && cmake --install $RUNNER_TEMP/sh/b >/dev/null
+          ls $P/include/vulkan/vulkan.hpp $P/share/cmake/SPIRV-Headers
+          echo "OGBA_VULKAN_PREFIX=$P" >> "$GITHUB_ENV"
       - name: Fetch llama.cpp
         run: git clone --depth 1 --branch "$LLAMA_CPP_TAG" https://github.com/ggml-org/llama.cpp app/src/main/cpp/llama.cpp
       - name: Restore release keystore
@@ -34,6 +48,8 @@ jobs:
           AS=$(ls $ANDROID_HOME/build-tools/*/apksigner | sort -V | tail -1)
           $AS verify --print-certs app/build/outputs/apk/release/app-release.apk | tee certs.txt
           grep -q "SHA-256 digest: efa45dc7f95c21a4c101240c0b1d9c706fb8eedd856708" certs.txt
+      - name: List native libs
+        run: unzip -l app/build/outputs/apk/release/app-release.apk | grep "lib/arm64" || true
       - name: Collect
         run: |
           mkdir -p out

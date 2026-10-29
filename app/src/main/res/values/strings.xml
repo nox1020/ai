@@ -91,4 +91,11 @@
     <string name="ram_hint">needs ~%1$d GB RAM</string>
     <string name="device_info">This device: %1$.1f GB RAM · %2$d perf threads · context %3$d</string>
     <string name="bg_download">downloading in background, resumes automatically</string>
+    <string name="performance">Performance</string>
+    <string name="gpu_accel">GPU acceleration (Vulkan)</string>
+    <string name="gpu_desc">Offload layers to the GPU. Falls back to CPU automatically if loading fails.</string>
+    <string name="gpu_none">No Vulkan GPU backend available on this device; using optimized CPU.</string>
+    <string name="gpu_layers">GPU layers: %1$d</string>
+    <string name="flash_attn">Flash attention</string>
+    <string name="flash_desc">Faster long prompts and less memory where supported (auto).</string>
 </resources>

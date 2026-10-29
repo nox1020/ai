@@ -18,16 +18,19 @@ data class CatalogModel(val id: String, val title: String, val sizeMb: Int, val 
 
 object Models {
     private const val HF = "https://huggingface.co/"
+    // Q4_0 is preferred: llama.cpp repacks it at load time into Arm dotprod/i8mm-friendly layouts (fastest CPU path).
     val catalog = listOf(
-        CatalogModel("qwen05", "Qwen2.5 0.5B Instruct", 398, 2, HF + "Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf", "fastest"),
-        CatalogModel("llama32_1b", "Llama 3.2 1B Instruct", 808, 3, HF + "bartowski/Llama-3.2-1B-Instruct-GGUF/resolve/main/Llama-3.2-1B-Instruct-Q4_K_M.gguf"),
-        CatalogModel("gemma3_1b", "Gemma 3 1B IT", 806, 3, HF + "ggml-org/gemma-3-1b-it-GGUF/resolve/main/gemma-3-1b-it-Q4_K_M.gguf"),
-        CatalogModel("qwen15", "Qwen2.5 1.5B Instruct", 1117, 4, HF + "Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf"),
-        CatalogModel("qwen3_17b", "Qwen3 1.7B", 1107, 4, HF + "unsloth/Qwen3-1.7B-GGUF/resolve/main/Qwen3-1.7B-Q4_K_M.gguf", "good Persian, tools"),
-        CatalogModel("llama32_3b", "Llama 3.2 3B Instruct", 2019, 6, HF + "bartowski/Llama-3.2-3B-Instruct-GGUF/resolve/main/Llama-3.2-3B-Instruct-Q4_K_M.gguf"),
-        CatalogModel("qwen3b", "Qwen2.5 3B Instruct", 2105, 6, HF + "Qwen/Qwen2.5-3B-Instruct-GGUF/resolve/main/qwen2.5-3b-instruct-q4_k_m.gguf"),
-        CatalogModel("gemma3_4b", "Gemma 3 4B IT", 2490, 8, HF + "ggml-org/gemma-3-4b-it-GGUF/resolve/main/gemma-3-4b-it-Q4_K_M.gguf", "best quality"),
-        CatalogModel("qwen3_4b", "Qwen3 4B", 2497, 8, HF + "unsloth/Qwen3-4B-GGUF/resolve/main/Qwen3-4B-Q4_K_M.gguf", "best agent"),
+        CatalogModel("qwen05", "Qwen2.5 0.5B Instruct", 398, 2, HF + "Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_0.gguf", "fastest"),
+        CatalogModel("gemma3_1b", "Gemma 3 1B IT", 721, 3, HF + "unsloth/gemma-3-1b-it-GGUF/resolve/main/gemma-3-1b-it-Q4_0.gguf"),
+        CatalogModel("qwen3_17b", "Qwen3 1.7B", 1056, 4, HF + "unsloth/Qwen3-1.7B-GGUF/resolve/main/Qwen3-1.7B-Q4_0.gguf", "good Persian, tools"),
+        CatalogModel("llama32_3b", "Llama 3.2 3B Instruct", 1921, 6, HF + "bartowski/Llama-3.2-3B-Instruct-GGUF/resolve/main/Llama-3.2-3B-Instruct-Q4_0.gguf"),
+        CatalogModel("phi4mini", "Phi-4-mini Instruct 3.8B", 2330, 6, HF + "bartowski/microsoft_Phi-4-mini-instruct-GGUF/resolve/main/microsoft_Phi-4-mini-instruct-Q4_0.gguf", "reasoning, code"),
+        CatalogModel("gemma3_4b", "Gemma 3 4B IT", 2370, 6, HF + "unsloth/gemma-3-4b-it-GGUF/resolve/main/gemma-3-4b-it-Q4_0.gguf"),
+        CatalogModel("qwen3_4b", "Qwen3 4B", 2375, 6, HF + "unsloth/Qwen3-4B-GGUF/resolve/main/Qwen3-4B-Q4_0.gguf", "best agent / size"),
+        CatalogModel("gemma3n_e2b", "Gemma 3n E2B IT", 2965, 6, HF + "unsloth/gemma-3n-E2B-it-GGUF/resolve/main/gemma-3n-E2B-it-Q4_0.gguf", "mobile-first, fast"),
+        CatalogModel("gemma3n_e4b", "Gemma 3n E4B IT", 4395, 8, HF + "unsloth/gemma-3n-E4B-it-GGUF/resolve/main/gemma-3n-E4B-it-Q4_0.gguf", "mobile-first, strong"),
+        CatalogModel("qwen25_7b", "Qwen2.5 7B Instruct", 4444, 10, HF + "bartowski/Qwen2.5-7B-Instruct-GGUF/resolve/main/Qwen2.5-7B-Instruct-Q4_0.gguf"),
+        CatalogModel("qwen3_8b", "Qwen3 8B", 4790, 12, HF + "bartowski/Qwen_Qwen3-8B-GGUF/resolve/main/Qwen_Qwen3-8B-Q4_0.gguf", "strongest; 12 GB+ RAM"),
     )
 
     fun dir(ctx: Context) = File(ctx.filesDir, "models").apply { mkdirs() }

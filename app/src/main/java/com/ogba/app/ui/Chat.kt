@@ -152,7 +152,7 @@ fun MessageItem(m: Message) {
         else -> Row(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
             Column(Modifier.widthIn(max = 340.dp).background(C.bubbleBot, RoundedCornerShape(18.dp)).padding(horizontal = 18.dp, vertical = 12.dp)) {
                 Markdown(m.content)
-                if (time.isNotEmpty()) Text(time, color = C.zinc400, fontSize = 10.sp, fontFamily = FontFamily.Monospace, modifier = Modifier.align(Alignment.End).padding(top = 4.dp))
+                if (time.isNotEmpty()) Text((if (m.model.isNotEmpty()) m.model + "  ·  " else "") + time, color = C.zinc400, fontSize = 10.sp, fontFamily = FontFamily.Monospace, modifier = Modifier.align(Alignment.End).padding(top = 4.dp))
             }
         }
     }

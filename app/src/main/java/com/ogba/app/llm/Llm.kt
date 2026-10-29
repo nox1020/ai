@@ -12,7 +12,8 @@ interface TokenCallback { fun onBytes(b: ByteArray): Boolean }
 
 object LlamaNative {
     init { System.loadLibrary("ogba_jni") }
-    external fun load(path: String, nCtx: Int, nThreads: Int): Long
+    external fun init(nativeLibDir: String): String
+    external fun load(path: String, nCtx: Int, nThreads: Int, nGpuLayers: Int, flashAttn: Boolean): Long
     external fun free(handle: Long)
     external fun generate(handle: Long, roles: Array<String>, contents: Array<String>, maxTokens: Int, temp: Float, cb: TokenCallback): Int
 }
@@ -42,16 +43,31 @@ object LlmEngine {
         return freqs.count { it >= max * 0.6 }.coerceIn(2, 8)
     }
 
+    var backends = ""; private set
+    val hasGpu get() = backends.contains("Vulkan", true)
+    @Volatile var gpuLayers = 0
+    @Volatile var flashAttn = true
+    var onGpu = false; private set
+
     fun configure(ctx: Context) {
         nThreads = perfCores()
         nCtx = if (totalRamGb(ctx) >= 5.5f) 4096 else 2048
+        backends = try { LlamaNative.init(ctx.applicationInfo.nativeLibraryDir) } catch (e: Throwable) { "init failed: ${e.message}" }
+        val p = ctx.getSharedPreferences("ogba", Context.MODE_PRIVATE)
+        gpuLayers = if (p.getBoolean("gpu_on", false) && hasGpu) p.getInt("gpu_layers", 99) else 0
+        flashAttn = p.getBoolean("flash_attn", true)
     }
+
+    /** Settings changed: drop the loaded model so the next turn reloads with new GPU / attention params. */
+    fun invalidate() { loadedPath = "" }
 
     private fun ensureLoaded(path: String) {
         if (loadedPath == path && handle != 0L) return
         if (handle != 0L) LlamaNative.free(handle)
         handle = 0L; loadedPath = null
-        val h = LlamaNative.load(path, nCtx, nThreads)
+        var h = LlamaNative.load(path, nCtx, nThreads, gpuLayers, flashAttn)
+        onGpu = h != 0L && gpuLayers > 0
+        if (h == 0L && gpuLayers > 0) { h = LlamaNative.load(path, nCtx, nThreads, 0, flashAttn); onGpu = false }   // GPU failed -> CPU fallback
         if (h == 0L) throw IllegalStateException("Failed to load model: $path")
         handle = h; loadedPath = path
     }

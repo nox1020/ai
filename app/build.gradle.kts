@@ -17,12 +17,20 @@ android {
         externalNativeBuild {
             cmake {
                 arguments += listOf("-DCMAKE_BUILD_TYPE=Release", "-DANDROID_STL=c++_shared")
+                System.getenv("OGBA_VULKAN_PREFIX")?.let { vk ->
+                    val ndkDir = System.getenv("ANDROID_NDK_ROOT_29") ?: ""
+                    arguments += listOf("-DOGBA_VULKAN=ON", "-DVulkan_INCLUDE_DIR=$vk/include",
+                        "-DVulkan_GLSLC_EXECUTABLE=$ndkDir/shader-tools/linux-x86_64/glslc",
+                        "-DSPIRV-Headers_DIR=$vk/share/cmake/SPIRV-Headers")
+                }
                 cppFlags += listOf("-O3", "-std=c++17")
                 cFlags += listOf("-O3")
             }
         }
     }
-    externalNativeBuild { cmake { path = file("src/main/cpp/CMakeLists.txt"); version = "3.22.1" } }
+    externalNativeBuild { cmake { path = file("src/main/cpp/CMakeLists.txt"); version = "3.31.6" } }
+    ndkVersion = "29.0.13113456"
+    packaging { jniLibs { useLegacyPackaging = true } }  // extract .so so ggml can dlopen CPU/GPU backend variants
     val ksFile = System.getenv("OGBA_KEYSTORE_FILE")?.let { file(it) }
     signingConfigs {
         if (ksFile != null && ksFile.exists()) create("ogba") {

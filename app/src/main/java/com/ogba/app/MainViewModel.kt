@@ -54,6 +54,16 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val autoReads = MutableStateFlow(prefs.getBoolean("auto_reads", true))
     val maxSteps = MutableStateFlow(prefs.getInt("max_steps", 6))
     fun setAutoReads(v: Boolean) { prefs.edit().putBoolean("auto_reads", v).apply(); autoReads.value = v }
+    val gpuOn = MutableStateFlow(prefs.getBoolean("gpu_on", false))
+    val gpuLayers = MutableStateFlow(prefs.getInt("gpu_layers", 99))
+    val flashAttn = MutableStateFlow(prefs.getBoolean("flash_attn", true))
+    fun setPerf(gpu: Boolean = gpuOn.value, layers: Int = gpuLayers.value, flash: Boolean = flashAttn.value) {
+        prefs.edit().putBoolean("gpu_on", gpu).putInt("gpu_layers", layers).putBoolean("flash_attn", flash).apply()
+        gpuOn.value = gpu; gpuLayers.value = layers; flashAttn.value = flash
+        LlmEngine.gpuLayers = if (gpu && LlmEngine.hasGpu) layers else 0
+        LlmEngine.flashAttn = flash
+        LlmEngine.invalidate()
+    }
     fun setMaxSteps(v: Int) { prefs.edit().putInt("max_steps", v).apply(); maxSteps.value = v }
 
     init {
@@ -181,7 +191,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             var out = ""
             try {
                 out = LlmEngine.generate(model, listOf("system" to sys) + history, 512) { s -> streaming.value = streaming.value + (botId to s) }
-                dao.insertMessage(Message(botId = botId, role = "bot", content = out.ifEmpty { "…" }, model = File(model).name))
+                val tps = LlmEngine.lastTokPerSec
+                dao.insertMessage(Message(botId = botId, role = "bot", content = out.ifEmpty { "…" },
+                    model = File(model).name.removeSuffix(".gguf") + " · " + String.format(java.util.Locale.US, "%.1f tok/s", tps) + (if (LlmEngine.onGpu) " · GPU" else " · CPU")))
             } catch (e: Exception) {
                 dao.insertMessage(Message(botId = botId, role = "error", content = "Error: ${e.message}"))
                 return

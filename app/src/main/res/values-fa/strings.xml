@@ -91,4 +91,11 @@
     <string name="ram_hint">نیاز به حدود %1$d گیگ رم</string>
     <string name="device_info">این دستگاه: %1$.1f گیگ رم · %2$d رشته · کانتکست %3$d</string>
     <string name="bg_download">دانلود در پس‌زمینه، خودکار ادامه می‌یابد</string>
+    <string name="performance">کارایی</string>
+    <string name="gpu_accel">شتاب‌دهی GPU (Vulkan)</string>
+    <string name="gpu_desc">لایه‌ها روی GPU اجرا می‌شوند. در صورت خطا خودکار به CPU برمی‌گردد.</string>
+    <string name="gpu_none">هیچ GPU سازگار با Vulkan پیدا نشد؛ از CPU بهینه استفاده می‌شود.</string>
+    <string name="gpu_layers">لایه‌های GPU: %1$d</string>
+    <string name="flash_attn">Flash attention</string>
+    <string name="flash_desc">پرامپت‌های بلند سریع‌تر و حافظه‌ی کمتر (خودکار).</string>
 </resources>

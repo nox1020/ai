@@ -3,7 +3,31 @@
 #include <vector>
 #include <android/log.h>
 #include "llama.h"
+#include "ggml-backend.h"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, "ogba", __VA_ARGS__)
+
+static std::string g_backends;
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_ogba_app_llm_LlamaNative_init(JNIEnv *env, jobject, jstring jdir) {
+    static bool done = false;
+    if (!done) {
+        const char *dir = env->GetStringUTFChars(jdir, nullptr);
+        ggml_backend_load_all_from_path(dir);
+        env->ReleaseStringUTFChars(jdir, dir);
+        llama_backend_init();
+        done = true;
+        g_backends.clear();
+        for (size_t i = 0; i < ggml_backend_dev_count(); i++) {
+            ggml_backend_dev_t d = ggml_backend_dev_get(i);
+            if (!g_backends.empty()) g_backends += "; ";
+            g_backends += std::string(ggml_backend_dev_name(d)) + " (" + ggml_backend_dev_description(d) + ")";
+        }
+        g_backends += " | " + std::string(llama_print_system_info());
+        LOGI("backends: %s", g_backends.c_str());
+    }
+    return env->NewStringUTF(g_backends.c_str());
+}
 
 struct Handle {
     llama_model *model = nullptr;
@@ -27,11 +51,11 @@ static size_t utf8_complete_len(const std::string &s) {
 }
 
 extern "C" JNIEXPORT jlong JNICALL
-Java_com_ogba_app_llm_LlamaNative_load(JNIEnv *env, jobject, jstring jpath, jint nCtx, jint nThreads) {
-    static bool inited = false;
-    if (!inited) { llama_backend_init(); inited = true; }
+Java_com_ogba_app_llm_LlamaNative_load(JNIEnv *env, jobject, jstring jpath, jint nCtx, jint nThreads, jint nGpuLayers, jboolean flash) {
     const char *path = env->GetStringUTFChars(jpath, nullptr);
     llama_model_params mp = llama_model_default_params();
+    mp.n_gpu_layers = nGpuLayers;   // 0 = CPU only; >0 offloads to Vulkan if a GPU backend loaded
+    mp.use_mmap = true;
     llama_model *model = llama_model_load_from_file(path, mp);
     env->ReleaseStringUTFChars(jpath, path);
     if (!model) return 0;
@@ -43,6 +67,7 @@ Java_com_ogba_app_llm_LlamaNative_load(JNIEnv *env, jobject, jstring jpath, jint
     h->cparams.n_threads = nThreads;
     h->cparams.n_threads_batch = nThreads;
     h->cparams.n_ubatch = 512;
+    h->cparams.flash_attn_type = flash ? LLAMA_FLASH_ATTN_TYPE_AUTO : LLAMA_FLASH_ATTN_TYPE_DISABLED;
     h->ctx = llama_init_from_model(model, h->cparams);
     if (!h->ctx) { llama_model_free(model); delete h; return 0; }
     LOGI("loaded model n_ctx=%d threads=%d", nCtx, nThreads);
@@ -101,12 +126,12 @@ Java_com_ogba_app_llm_LlamaNative_generate(JNIEnv *env, jobject, jlong ptr, jobj
     size_t keep = 0;
     while (keep < h->cached.size() && keep < toks.size() && h->cached[keep] == toks[keep]) keep++;
     if (keep == toks.size() && keep > 0) keep--;   // always re-decode at least the last prompt token
-    if (!llama_memory_seq_rm(mem, 0, keep, -1)) { llama_memory_clear(mem); keep = 0; }
+    if (!llama_memory_seq_rm(mem, 0, keep, -1)) { llama_memory_clear(mem, true); keep = 0; }
     h->cached.resize(keep);
     LOGI("prompt %zu tokens, reused %zu from KV cache", toks.size(), keep);
     for (size_t i = keep; i < toks.size(); i += 512) {
         int cnt = std::min<int>(512, toks.size() - i);
-        if (llama_decode(ctx, llama_batch_get_one(toks.data() + i, cnt)) != 0) { llama_memory_clear(mem); h->cached.clear(); return -4; }
+        if (llama_decode(ctx, llama_batch_get_one(toks.data() + i, cnt)) != 0) { llama_memory_clear(mem, true); h->cached.clear(); return -4; }
         h->cached.insert(h->cached.end(), toks.begin() + i, toks.begin() + i + cnt);
     }
     llama_sampler *smpl = llama_sampler_chain_init(llama_sampler_chain_default_params());
