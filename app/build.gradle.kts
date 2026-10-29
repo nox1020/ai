@@ -9,7 +9,7 @@ android {
     compileSdk = 34
     defaultConfig {
         applicationId = "com.ogba.app"
-        minSdk = 26
+        minSdk = 28
         targetSdk = 28 // allows exec of the proot/Alpine sandbox from app storage (Termux approach); sideload only
         versionCode = (System.getenv("GITHUB_RUN_NUMBER") ?: "1").toInt()
         versionName = "0.1." + (System.getenv("GITHUB_RUN_NUMBER") ?: "0")
