@@ -55,7 +55,6 @@ Java_com_ogba_app_llm_LlamaNative_load(JNIEnv *env, jobject, jstring jpath, jint
     const char *path = env->GetStringUTFChars(jpath, nullptr);
     llama_model_params mp = llama_model_default_params();
     mp.n_gpu_layers = nGpuLayers;   // 0 = CPU only; >0 offloads to Vulkan if a GPU backend loaded
-    mp.use_mmap = true;
     llama_model *model = llama_model_load_from_file(path, mp);
     env->ReleaseStringUTFChars(jpath, path);
     if (!model) return 0;
