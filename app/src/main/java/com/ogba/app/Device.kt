@@ -23,6 +23,10 @@ object Device {
         "browser.click" -> Browser.click(call.arg)
         "browser.type" -> Browser.type(call.arg)
         "browser.back" -> Browser.back()
+        "intent.open_url" -> {
+            val safe = withContext(Dispatchers.IO) { Web.safeUrl(call.arg).toString() }
+            withContext(Dispatchers.Main) { intents(ctx, call.copy(arg = safe)) }
+        }
         "shell.run" -> { if (call.arg.isBlank()) throw ToolError("Empty command."); Sandbox.run(ctx, call.arg) }
         else -> withContext(Dispatchers.Main) { intents(ctx, call) }
     }
@@ -32,7 +36,7 @@ object Device {
     }
 
     private fun intents(ctx: Context, call: ToolCall): String = when (call.tool) {
-        "intent.open_url" -> { val safe = with(call.arg) { Web.safeUrl(this).toString() }; start(ctx, Intent(Intent.ACTION_VIEW, Uri.parse(safe))); "Opened $safe" }
+        "intent.open_url" -> { start(ctx, Intent(Intent.ACTION_VIEW, Uri.parse(call.arg))); "Opened ${call.arg}" }
         "intent.share" -> { start(ctx, Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, call.arg), "Share")); "Share sheet opened" }
         "clipboard.read" -> (ctx.getSystemService(ClipboardManager::class.java).primaryClip?.getItemAt(0)?.coerceToText(ctx)?.toString() ?: "").ifEmpty { "(clipboard empty)" }.take(2000)
         "clipboard.write" -> { ctx.getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("OGBA", call.arg)); "Copied ${call.arg.length} chars" }
