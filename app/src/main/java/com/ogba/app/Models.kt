@@ -34,13 +34,22 @@ object Models {
     )
 
     fun dir(ctx: Context) = File(ctx.filesDir, "models").apply { mkdirs() }
-    fun installed(ctx: Context): List<File> = dir(ctx).listFiles { f -> f.name.endsWith(".gguf") }?.sortedBy { it.name } ?: emptyList()
+    fun installed(ctx: Context): List<File> = dir(ctx).listFiles { f -> f.isFile && f.name.endsWith(".gguf") && isGguf(f) }?.sortedBy { it.name } ?: emptyList()
+
+    fun isGguf(f: File): Boolean = f.isFile && f.length() > 1_000_000L && try {
+        f.inputStream().use { i -> ByteArray(4).also { if (i.read(it) != 4) return false }.contentEquals("GGUF".toByteArray()) }
+    } catch (_: Exception) { false }
 
     private fun prefs(ctx: Context) = ctx.getSharedPreferences("ogba", Context.MODE_PRIVATE)
-    fun selected(ctx: Context): String? = prefs(ctx).getString("model", null)?.takeIf { File(it).exists() }
+    fun selected(ctx: Context): String? = prefs(ctx).getString("model", null)?.let { File(it).canonicalFile }
+        ?.takeIf { it.parentFile == dir(ctx).canonicalFile && isGguf(it) }?.absolutePath
         ?: installed(ctx).firstOrNull()?.absolutePath
-    fun pathFor(ctx: Context, botModel: String): String? =
-        botModel.takeIf { it.isNotEmpty() }?.let { File(dir(ctx), it) }?.takeIf { it.exists() }?.absolutePath ?: selected(ctx)
+    fun pathFor(ctx: Context, botModel: String): String? {
+        val d = dir(ctx).canonicalFile
+        val candidate = if (botModel.isEmpty()) null else File(d, botModel).canonicalFile
+        val local = candidate?.takeIf { it.parentFile == d && isGguf(it) }
+        return local?.absolutePath ?: selected(ctx)
+    }
     fun select(ctx: Context, path: String) = prefs(ctx).edit().putString("model", path).apply()
 
     fun enqueue(ctx: Context, m: CatalogModel) {
@@ -56,9 +65,17 @@ object Models {
     fun import(ctx: Context, uri: Uri): File {
         var name = uri.lastPathSegment?.substringAfterLast('/') ?: "imported.gguf"
         if (!name.endsWith(".gguf")) name += ".gguf"
+        name = name.substringAfterLast('\\').replace(Regex("[^A-Za-z0-9._-]"), "_").take(120)
         val out = File(dir(ctx), name)
-        ctx.contentResolver.openInputStream(uri)!!.use { i -> out.outputStream().use { i.copyTo(it, 1 shl 16) } }
-        return out
+        val part = File(dir(ctx), name + ".part")
+        try {
+            val input = ctx.contentResolver.openInputStream(uri) ?: throw ToolError("Unable to open selected model")
+            input.use { i -> part.outputStream().use { i.copyTo(it, 1 shl 16) } }
+            if (!isGguf(part)) throw ToolError("Not a valid GGUF model")
+            if (out.exists()) out.delete()
+            if (!part.renameTo(out)) throw ToolError("Could not save model")
+            return out
+        } finally { part.delete() }
     }
 }
 
@@ -90,9 +107,15 @@ class DownloadWorker(ctx: Context, p: WorkerParameters) : CoroutineWorker(ctx, p
                 conn.setRequestProperty("User-Agent", "OGBA/0.2")
                 if (have > 0) conn.setRequestProperty("Range", "bytes=$have-")
                 val code = conn.responseCode
-                if (code in 300..399 && hops++ < 8) { url = URL(url, conn.getHeaderField("Location")); conn.disconnect(); continue }
-                if (code == 416) { break }
+                if (code in 300..399 && hops++ < 8) {
+                    val location = conn.getHeaderField("Location") ?: throw IllegalStateException("Missing download redirect")
+                    val next = URL(url, location)
+                    if (next.protocol != "https") throw IllegalStateException("Insecure download redirect")
+                    url = next; conn.disconnect(); continue
+                }
+                if (code == 416) { conn.disconnect(); break }
                 if (code == 200) have = 0 else if (code != 206) throw IllegalStateException("HTTP $code")
+                if (code == 206 && !conn.getHeaderField("Content-Range").orEmpty().startsWith("bytes $have-")) throw IllegalStateException("Invalid download range")
                 break
             }
             if (conn.responseCode != 416) {
@@ -103,6 +126,7 @@ class DownloadWorker(ctx: Context, p: WorkerParameters) : CoroutineWorker(ctx, p
                         val buf = ByteArray(1 shl 16); var done = have; var lastPct = -1; var n: Int
                         while (input.read(buf).also { n = it } >= 0) {
                             if (isStopped) return Result.failure()
+                            if (n == 0) continue
                             raf.write(buf, 0, n); done += n
                             val pct = if (total > 0) (done * 100 / total).toInt() else 0
                             if (pct != lastPct) { lastPct = pct; setProgress(workDataOf("p" to pct / 100f, "id" to m.id)); try { setForeground(info(pct)) } catch (_: Exception) {} }
@@ -110,7 +134,9 @@ class DownloadWorker(ctx: Context, p: WorkerParameters) : CoroutineWorker(ctx, p
                     }
                 }
             }
-            part.renameTo(out)
+            if (!Models.isGguf(part)) throw IllegalStateException("Invalid or incomplete GGUF download")
+            if (out.exists()) out.delete()
+            if (!part.renameTo(out)) throw IllegalStateException("Unable to finalize model download")
             if (Models.selected(applicationContext) == null) Models.select(applicationContext, out.absolutePath)
             Result.success(workDataOf("id" to m.id))
         } catch (e: Exception) {
