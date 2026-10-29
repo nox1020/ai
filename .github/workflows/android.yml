@@ -18,8 +18,22 @@ jobs:
         with: { gradle-version: '8.9' }
       - name: Fetch llama.cpp
         run: git clone --depth 1 --branch "$LLAMA_CPP_TAG" https://github.com/ggml-org/llama.cpp app/src/main/cpp/llama.cpp
+      - name: Restore release keystore
+        env: { KS: "${{ secrets.OGBA_KEYSTORE_B64 }}" }
+        run: |
+          test -n "$KS" || { echo "missing OGBA_KEYSTORE_B64 secret"; exit 1; }
+          echo "$KS" | base64 -d > "$RUNNER_TEMP/ogba-release.jks"
+          echo "OGBA_KEYSTORE_FILE=$RUNNER_TEMP/ogba-release.jks" >> "$GITHUB_ENV"
       - name: Build APKs
+        env:
+          OGBA_KEYSTORE_PASSWORD: ${{ secrets.OGBA_KEYSTORE_PASSWORD }}
+          OGBA_KEY_ALIAS: ${{ secrets.OGBA_KEY_ALIAS }}
         run: gradle --no-daemon assembleDebug assembleRelease
+      - name: Verify signature
+        run: |
+          AS=$(ls $ANDROID_HOME/build-tools/*/apksigner | sort -V | tail -1)
+          $AS verify --print-certs app/build/outputs/apk/release/app-release.apk | tee certs.txt
+          grep -q "SHA-256 digest: efa45dc7f95c21a4c101240c0b1d9c706fb8eedd856708" certs.txt
       - name: Collect
         run: |
           mkdir -p out

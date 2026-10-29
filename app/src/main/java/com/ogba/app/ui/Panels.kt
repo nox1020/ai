@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.sp
 import com.ogba.app.*
 import com.ogba.app.R
 import com.ogba.app.data.Bot
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -54,29 +55,67 @@ fun SectionTitle(t: String) = Text(t, color = C.zinc400, fontSize = 11.sp, fontW
 @Composable
 fun darkFieldColors() = OutlinedTextFieldDefaults.colors(focusedBorderColor = C.zinc500, unfocusedBorderColor = C.pillBorder, focusedContainerColor = C.popover, unfocusedContainerColor = C.popover)
 
-/** ComputerPanel.jsx – remote/Docker computers need a server; offline we expose the local sandbox workspace instead. */
+/** ComputerPanel.jsx – OGBA's own computer: Alpine Linux via proot (or Android shell fallback) + browser. */
 @Composable
 fun ComputerPanel(vm: MainViewModel) {
     val ctx = androidx.compose.ui.platform.LocalContext.current
-    var files by remember { mutableStateOf(Tools.workspaceRoot(ctx).walkTopDown().filter { it.isFile }.toList()) }
+    val lines by Sandbox.terminal.collectAsState()
+    val installing by Sandbox.installing.collectAsState()
+    var linux by remember { mutableStateOf(Sandbox.linuxInstalled(ctx)) }
+    var cmd by remember { mutableStateOf("") }
+    val scope = rememberCoroutineScope()
+    val list = androidx.compose.foundation.lazy.rememberLazyListState()
+    LaunchedEffect(lines.size) { if (lines.isNotEmpty()) list.scrollToItem(lines.size - 1) }
     PanelScaffold(stringResource(R.string.computer), { vm.open(Screen.Chat) }) {
-        DarkCard {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(stringResource(R.string.remote_computer), color = C.foreground, fontWeight = FontWeight.SemiBold, fontSize = 13.sp, modifier = Modifier.weight(1f))
-                Badge(stringResource(R.string.unavailable_offline), C.amber400)
-            }
-            Text(stringResource(R.string.remote_computer_desc), color = C.zinc400, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
+        Row(Modifier.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Badge(if (linux) "Alpine Linux · proot" else "Android shell (fallback)", if (linux) C.emerald else C.amber400)
+            Spacer(Modifier.weight(1f))
+            TextButton(onClick = { vm.open(Screen.Browser) }) { Text("🌐 " + stringResource(R.string.browser), fontSize = 12.sp) }
+            TextButton(onClick = { Sandbox.clear() }) { Text(stringResource(R.string.clear), fontSize = 12.sp) }
         }
-        DarkCard {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(stringResource(R.string.local_workspace), color = C.foreground, fontWeight = FontWeight.SemiBold, fontSize = 13.sp, modifier = Modifier.weight(1f))
-                Badge(stringResource(R.string.ready), C.emerald)
-                IconButton(onClick = { files = Tools.workspaceRoot(ctx).walkTopDown().filter { it.isFile }.toList() }) { Icon(Icons.Default.Refresh, null, tint = C.zinc400) }
-            }
-            Text(stringResource(R.string.local_workspace_desc), color = C.zinc400, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
-            if (files.isEmpty()) Text(stringResource(R.string.empty_workspace), color = C.zinc500, fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
-            files.forEach { f -> Text("📄 " + f.relativeTo(Tools.workspaceRoot(ctx)).path + "  (${f.length()} B)", color = C.zinc300, fontSize = 12.sp, fontFamily = FontFamily.Monospace, modifier = Modifier.padding(top = 6.dp)) }
+        if (!linux) DarkCard {
+            Text(stringResource(R.string.install_linux_desc), color = C.zinc400, fontSize = 12.sp)
+            if (installing != null) { Text(installing!!, color = C.cyan300, fontSize = 12.sp); LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 6.dp), color = C.blue) }
+            else Button(onClick = { scope.launch { Sandbox.installLinux(ctx); linux = Sandbox.linuxInstalled(ctx) } }, Modifier.padding(top = 6.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = C.blue)) { Text(stringResource(R.string.install_linux), fontSize = 12.sp) }
         }
+        LazyColumn(Modifier.weight(1f).fillMaxWidth().background(Color(0xFF050507), RoundedCornerShape(12.dp)).border(1.dp, C.pillBorder, RoundedCornerShape(12.dp)).padding(10.dp), state = list) {
+            items(lines.size) { i -> val l = lines[i]
+                Text(l.text, fontFamily = FontFamily.Monospace, fontSize = 11.sp, color = when (l.kind) { "cmd" -> C.emerald; "sys" -> C.zinc500; else -> C.zinc300 })
+            }
+        }
+        Row(Modifier.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            OutlinedTextField(cmd, { cmd = it }, Modifier.weight(1f), placeholder = { Text("$ ls -la", fontFamily = FontFamily.Monospace) }, singleLine = true, colors = darkFieldColors(),
+                textStyle = androidx.compose.ui.text.TextStyle(fontFamily = FontFamily.Monospace, fontSize = 12.sp, color = C.foreground))
+            IconButton(onClick = { val c = cmd; cmd = ""; if (c.isNotBlank()) scope.launch { Sandbox.run(ctx, c) } }) { Icon(Icons.Default.PlayArrow, null, tint = C.emerald) }
+        }
+    }
+}
+
+/** In-app WebView: the computer's browser. The agent drives it with browser.open / browser.read; the user can watch and browse. */
+@android.annotation.SuppressLint("SetJavaScriptEnabled")
+@Composable
+fun BrowserPanel(vm: MainViewModel) {
+    val url by Browser.url.collectAsState()
+    var bar by remember(url) { mutableStateOf(url) }
+    Column(Modifier.fillMaxSize().background(C.background)) {
+        Row(Modifier.fillMaxWidth().padding(6.dp), verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = { vm.open(Screen.Chat) }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = C.zinc400) }
+            OutlinedTextField(bar, { bar = it }, Modifier.weight(1f), singleLine = true, colors = darkFieldColors(), textStyle = androidx.compose.ui.text.TextStyle(fontSize = 12.sp, color = C.foreground),
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Go),
+                keyboardActions = androidx.compose.foundation.text.KeyboardActions(onGo = { Browser.webView?.loadUrl(Web.normalize(bar)) }))
+            IconButton(onClick = { Browser.webView?.reload() }) { Icon(Icons.Default.Refresh, null, tint = C.zinc400) }
+        }
+        androidx.compose.ui.viewinterop.AndroidView(modifier = Modifier.fillMaxSize(), factory = { c ->
+            android.webkit.WebView(c).apply {
+                settings.javaScriptEnabled = true; settings.domStorageEnabled = true
+                webViewClient = object : android.webkit.WebViewClient() {
+                    override fun onPageFinished(view: android.webkit.WebView, u: String) { Browser.url.value = u; Browser.title.value = view.title ?: ""; Browser.pageDone?.complete(Unit) }
+                }
+                Browser.webView = this
+                loadUrl(Browser.url.value)
+            }
+        }, onRelease = { if (Browser.webView === it) Browser.webView = null; it.destroy() })
     }
 }
 
@@ -84,8 +123,11 @@ fun ComputerPanel(vm: MainViewModel) {
 @Composable
 fun Marketplace(vm: MainViewModel) {
     val local = listOf("workspace.list" to "List files in the local sandbox", "workspace.read" to "Read a sandbox file", "workspace.write" to "Write a sandbox file",
-        "local.calc" to "Calculator", "local.time" to "Device clock", "local.note" to "Save a note", "local.notes" to "Read notes")
-    val cloud = listOf("GitHub", "Gmail", "Slack", "Google Calendar", "Notion", "Linear", "Google Drive")
+        "local.calc" to "Calculator", "local.time" to "Device clock", "local.note" to "Save a note", "local.notes" to "Read notes",
+        "web.search" to "DuckDuckGo search (no API key)", "web.fetch" to "Download a page as readable text", "browser.open" to "Open a page in the computer's browser",
+        "browser.read" to "Read the open browser page", "shell.run" to "Run a command on the OGBA computer (Alpine/proot)", "intent.open_url" to "Open a URL in another app",
+        "intent.share" to "Android share sheet", "clipboard.read" to "Read clipboard", "clipboard.write" to "Write clipboard", "alarm.set" to "Set an alarm", "calendar.add" to "Add a calendar event")
+    val cloud = listOf("GitHub", "Gmail", "Slack", "Notion", "Linear", "Google Drive")
     PanelScaffold(stringResource(R.string.plugins), { vm.open(Screen.Chat) }) {
         LazyColumn {
             item { SectionTitle(stringResource(R.string.builtin_tools).uppercase()) }
@@ -93,7 +135,7 @@ fun Marketplace(vm: MainViewModel) {
                 DarkCard {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(n, color = C.cyan300, fontFamily = FontFamily.Monospace, fontSize = 12.sp, modifier = Modifier.weight(1f))
-                        Badge(stringResource(R.string.approval_required), C.amber400)
+                        if (n in Tools.readOnly) Badge(stringResource(R.string.read_only), C.emerald) else Badge(stringResource(R.string.approval_required), C.amber400)
                     }
                     Text(d, color = C.zinc400, fontSize = 12.sp)
                 }
@@ -158,6 +200,17 @@ fun SettingsPanel(vm: MainViewModel) {
                 SettingsRow(stringResource(R.string.default_model), sel?.substringAfterLast('/') ?: stringResource(R.string.no_model_short)) { vm.open(Screen.Models) }
                 DarkCard { Text(stringResource(R.string.provider_desc), color = C.zinc400, fontSize = 12.sp) }
 
+                SectionTitle(stringResource(R.string.agent).uppercase())
+                val auto by vm.autoReads.collectAsState()
+                val steps by vm.maxSteps.collectAsState()
+                DarkCard {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) { Text(stringResource(R.string.auto_reads), color = C.foreground, fontSize = 13.sp); Text(stringResource(R.string.auto_reads_desc), color = C.zinc500, fontSize = 11.sp) }
+                        Switch(auto, { vm.setAutoReads(it) })
+                    }
+                    Text(stringResource(R.string.max_steps, steps), color = C.foreground, fontSize = 13.sp, modifier = Modifier.padding(top = 10.dp))
+                    Slider(steps.toFloat(), { vm.setMaxSteps(it.toInt()) }, valueRange = 1f..12f, steps = 10)
+                }
                 SectionTitle(stringResource(R.string.local_data).uppercase())
                 SettingsRow(stringResource(R.string.memory_title), "") { vm.open(Screen.Memory) }
                 SettingsRow(stringResource(R.string.routines), "") { vm.open(Screen.Routines) }

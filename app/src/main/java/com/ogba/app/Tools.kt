@@ -17,6 +17,17 @@ data class ToolCall(val tool: String, val arg: String = "", val content: String 
         "local.time" -> "Read the device clock"
         "local.note" -> "Save note: $arg"
         "local.notes" -> "Read saved notes"
+        "web.search" -> "Search the web (DuckDuckGo): $arg"
+        "web.fetch" -> "Download and read page: $arg"
+        "browser.open" -> "Open in the computer's browser: $arg"
+        "browser.read" -> "Read the page open in the browser"
+        "shell.run" -> "Run shell command on OGBA computer: $arg"
+        "intent.open_url" -> "Open URL in another app: $arg"
+        "intent.share" -> "Share text via Android share sheet"
+        "clipboard.read" -> "Read the clipboard"
+        "clipboard.write" -> "Copy text to clipboard"
+        "alarm.set" -> "Set an alarm: $arg"
+        "calendar.add" -> "Add a calendar event: $arg"
         else -> tool
     }
 }
@@ -24,12 +35,20 @@ class ToolError(msg: String) : Exception(msg)
 
 /** Deny-by-default registry: only these actions exist, every one requires user approval. */
 object Tools {
-    val registry = setOf("workspace.list", "workspace.read", "workspace.write", "local.calc", "local.time", "local.note", "local.notes")
+    val registry = setOf("workspace.list", "workspace.read", "workspace.write", "local.calc", "local.time", "local.note", "local.notes",
+        "web.search", "web.fetch", "browser.open", "browser.read", "shell.run", "intent.open_url", "intent.share",
+        "clipboard.read", "clipboard.write", "alarm.set", "calendar.add")
+    /** Side-effect-free actions; may auto-run when the "auto-run reads" setting is on. */
+    val readOnly = setOf("workspace.list", "workspace.read", "local.calc", "local.time", "local.notes", "web.search", "web.fetch", "browser.open", "browser.read")
+    private val aliases = mapOf("calc" to "local.calc", "time" to "local.time", "note" to "local.note", "notes" to "local.notes",
+        "search" to "web.search", "fetch" to "web.fetch", "shell" to "shell.run", "open_url" to "intent.open_url", "share" to "intent.share")
     private val modelRe = Regex("""\[\[tool:([\w.]+)\s*(.*?)]]""", RegexOption.DOT_MATCHES_ALL)
 
-    const val INSTRUCTIONS = "Local tools (each needs the user's approval): to request one, reply with ONLY a single line such as " +
-        "[[tool:calc 12*(3+4)]], [[tool:time]], [[tool:note TEXT]], [[tool:notes]], [[tool:workspace.list .]] or [[tool:workspace.read FILE]]. " +
-        "When a line starting with 'Action result' is in your instructions, use it to answer the user normally."
+    const val INSTRUCTIONS = """You are an agent on the user's phone. You may use tools, one per reply. To use a tool, write a one-line Plan, then on the last line ONLY the call, e.g.:
+Plan: search the web for the weather.
+[[tool:web.search weather in Tehran today]]
+Tools: web.search QUERY | web.fetch URL | browser.open URL | browser.read | shell.run COMMAND (Alpine Linux sandbox, apk add available) | workspace.list PATH | workspace.read FILE | workspace.write FILE then the content on the next lines | calc EXPR | time | note TEXT | notes | intent.open_url URL | intent.share TEXT | clipboard.read | clipboard.write TEXT | alarm.set HH:MM LABEL | calendar.add TITLE | yyyy-MM-dd HH:mm
+After each call you receive 'Observation (tool): ...'. Repeat until you can answer, then reply normally WITHOUT any [[tool:...]]. Never invent observations. If no tool is needed, just answer."""
 
     /** Port of parse_workspace_command plus local slash tools. Returns null if not a command. */
     fun parseUserCommand(prompt: String): ToolCall? {
@@ -48,15 +67,23 @@ object Tools {
             if (header.size > 3) throw ToolError("${action.replaceFirstChar { it.uppercase() }} accepts one path argument.")
             return ToolCall("workspace.$action", if (header.size == 3) header[2] else ".")
         }
-        val m = Regex("^/(calc|time|note|notes)\\b\\s*(.*)$", RegexOption.DOT_MATCHES_ALL).find(text) ?: return null
-        return ToolCall("local." + m.groupValues[1].lowercase(), m.groupValues[2].trim())
+        val m = Regex("^/(calc|time|note|notes|search|fetch|browse|sh)\\b\\s*(.*)$", RegexOption.DOT_MATCHES_ALL).find(text) ?: return null
+        val arg = m.groupValues[2].trim()
+        return when (val c = m.groupValues[1].lowercase()) {
+            "search" -> ToolCall("web.search", arg); "fetch" -> ToolCall("web.fetch", arg)
+            "browse" -> ToolCall("browser.open", arg); "sh" -> ToolCall("shell.run", arg)
+            else -> ToolCall("local.$c", arg)
+        }
     }
 
     fun parseModelRequest(text: String): ToolCall? {
         val m = modelRe.find(text) ?: return null
         var name = m.groupValues[1].lowercase()
-        if (!name.contains('.')) name = "local.$name"
-        return if (name in registry && name != "workspace.write") ToolCall(name, m.groupValues[2].trim()) else null
+        name = aliases[name] ?: name
+        if (name !in registry) return null
+        val arg = m.groupValues[2].trim()
+        if (name == "workspace.write") { val l = arg.split("\n", limit = 2); return ToolCall(name, l[0].trim(), l.getOrElse(1) { "" }) }
+        return ToolCall(name, arg)
     }
 
     fun workspaceRoot(ctx: Context) = File(ctx.filesDir, "workspace").apply { mkdirs() }
@@ -81,7 +108,7 @@ object Tools {
                 val f = resolve(root, call.arg)
                 if (!f.isFile) throw ToolError("File not found: ${call.arg}")
                 if (f.length() > 64_000) throw ToolError("File is too large to read (limit 64 KB).")
-                "{\"path\":\"${call.arg}\",\"content\":\"${f.readText()}\"}"
+                "{\"path\":\"${call.arg}\",\"content\":\"${f.readText().take(3000)}\"}"
             }
             "workspace.write" -> {
                 val f = resolve(root, call.arg); f.parentFile?.mkdirs(); f.writeText(call.content)
@@ -91,7 +118,7 @@ object Tools {
             "local.time" -> "{\"now\":\"" + SimpleDateFormat("EEEE, MMMM dd, yyyy 'at' hh:mm a", Locale.US).format(Date()) + "\",\"timezone\":\"" + TimeZone.getDefault().id + "\"}"
             "local.note" -> { if (call.arg.isBlank()) throw ToolError("Note text is empty."); dao.insertNote(Note(text = call.arg)); "{\"saved\":\"${call.arg}\"}" }
             "local.notes" -> "{\"notes\":[" + dao.notesNow().take(20).joinToString(", ") { "\"${it.text}\"" } + "]}"
-            else -> throw ToolError("Unknown action")
+            else -> Device.execute(ctx, call)
         }
     }
 

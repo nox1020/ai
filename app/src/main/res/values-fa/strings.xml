@@ -70,4 +70,13 @@
     <string name="unavailable_offline">در حالت آفلاین در دسترس نیست</string>
     <string name="yesterday">دیروز</string>
     <string name="your_name">نام شما</string>
+    <string name="browser">مرورگر</string>
+    <string name="clear">پاک کردن</string>
+    <string name="install_linux">نصب لینوکس (Alpine، حدود ۴ مگابایت)</string>
+    <string name="install_linux_desc">کامپیوتر خود گوشی: یک بار proot و Alpine را دانلود می‌کند. تا آن موقع دستورها در شل اندروید داخل فضای کاری اجرا می‌شوند.</string>
+    <string name="agent">عامل</string>
+    <string name="auto_reads">اجرای خودکار ابزارهای فقط‌خواندنی</string>
+    <string name="auto_reads_desc">جستجو، خواندن صفحه، مرور و خواندن فایل بدون کارت تأیید اجرا می‌شوند. اقدامات دارای اثر همیشه تأیید می‌خواهند.</string>
+    <string name="max_steps">حداکثر گام‌های عامل: %1$d</string>
+    <string name="read_only">فقط خواندنی</string>
 </resources>

@@ -57,14 +57,14 @@ import kotlinx.coroutines.flow.Flow
     @Insert suspend fun insertAudit(e: AuditEvent)
 }
 
-@Database(entities = [Bot::class, Message::class, Memory::class, Note::class, Routine::class, AuditEvent::class], version = 2)
+@Database(entities = [Bot::class, Message::class, Memory::class, Note::class, Routine::class, AuditEvent::class], version = 2, exportSchema = false)
 abstract class AppDb : RoomDatabase() {
     abstract fun dao(): AppDao
     companion object {
         @Volatile private var inst: AppDb? = null
         fun get(ctx: Context): AppDb = inst ?: synchronized(this) {
             inst ?: Room.databaseBuilder(ctx.applicationContext, AppDb::class.java, "ogba.db")
-                .fallbackToDestructiveMigration().build().also { inst = it }
+                .fallbackToDestructiveMigrationFrom(1) /* add Migration(N, N+1) objects for every future schema change */.build().also { inst = it }
         }
     }
 }

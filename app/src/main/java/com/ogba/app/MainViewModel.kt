@@ -21,7 +21,7 @@ data class Approval(val requestId: String, val botId: Long, val call: ToolCall, 
 /** Inline tool lifecycle event card: tool.started / tool.completed / tool.failed / tool.denied / tool.expired */
 data class ToolEvent(val id: Long, val botId: Long, val type: String, val tool: String, val result: String? = null, val error: String? = null)
 
-enum class Screen { Chat, Computer, Marketplace, Audit, Settings, Models, Memory, Routines }
+enum class Screen { Chat, Computer, Browser, Marketplace, Audit, Settings, Models, Memory, Routines }
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class MainViewModel(app: Application) : AndroidViewModel(app) {
@@ -51,8 +51,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val userName = MutableStateFlow(prefs.getString("user_name", "You") ?: "You")
     val userEmail = MutableStateFlow(prefs.getString("user_email", "") ?: "")
     val toast = MutableStateFlow<String?>(null)
+    val autoReads = MutableStateFlow(prefs.getBoolean("auto_reads", true))
+    val maxSteps = MutableStateFlow(prefs.getInt("max_steps", 6))
+    fun setAutoReads(v: Boolean) { prefs.edit().putBoolean("auto_reads", v).apply(); autoReads.value = v }
+    fun setMaxSteps(v: Int) { prefs.edit().putInt("max_steps", v).apply(); maxSteps.value = v }
 
     init {
+        Browser.showScreen = { screen.value = Screen.Browser }
         viewModelScope.launch { bots.first { it.isNotEmpty() }.let { if (currentBotId.value < 0) currentBotId.value = it.first().id } }
     }
 
@@ -95,6 +100,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     /** Action gateway: open request -> wait for decision -> execute -> tool context string. */
     private suspend fun runGated(botId: Long, call: ToolCall): String {
         if (call.tool !in Tools.registry) { event(botId, "tool.failed", call.tool, error = "Action rejected by policy"); return "Action rejected by policy: ${call.tool}" }
+        if (call.tool in Tools.readOnly && autoReads.value) {
+            dao.insertAudit(AuditEvent(botId = botId, type = "auto.allowed", tool = call.tool, summary = call.summary))
+            return execGated(botId, call)
+        }
         val id = "req-" + System.currentTimeMillis().toString(36)
         val d = CompletableDeferred<String>()
         decisions[id] = d
@@ -104,48 +113,60 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         decisions.remove(id)
         approvals.value = approvals.value.map { if (it.requestId == id) it.copy(status = if (decision == "allow") "allowed" else if (decision == "deny") "denied" else "expired") else it }
         return when (decision) {
-            "allow" -> {
-                event(botId, "tool.started", call.tool)
-                try {
-                    val r = withContext(Dispatchers.IO) { Tools.execute(ctx, call, dao) }
-                    event(botId, "tool.completed", call.tool, result = r)
-                    "Action result (${call.tool}): $r"
-                } catch (e: Exception) {
-                    event(botId, "tool.failed", call.tool, error = e.message)
-                    "Action could not execute (${call.tool}): ${e.message}"
-                }
-            }
+            "allow" -> execGated(botId, call)
             "deny" -> { event(botId, "tool.denied", call.tool); "Action denied by the user: ${call.tool}" }
             else -> { event(botId, "tool.expired", call.tool); "Action expired before approval: ${call.tool}" }
         }
     }
 
+    private suspend fun execGated(botId: Long, call: ToolCall): String {
+        event(botId, "tool.started", call.tool, result = call.summary)
+        return try {
+            val r = withContext(Dispatchers.IO) { Tools.execute(ctx, call, dao) }
+            event(botId, "tool.completed", call.tool, result = r)
+            "Action result (${call.tool}): $r"
+        } catch (e: Exception) {
+            event(botId, "tool.failed", call.tool, error = e.message)
+            "Action could not execute (${call.tool}): ${e.message}"
+        }
+    }
+
     fun respondApproval(requestId: String, action: String) { decisions[requestId]?.complete(action) }
 
-    private suspend fun streamTurn(botId: Long, toolContext: String, depth: Int = 0) {
+    /** Agent loop: plan -> act (tool, approval-gated) -> observe -> repeat, up to maxSteps. */
+    private suspend fun streamTurn(botId: Long, toolContext: String) {
         val bot = dao.bot(botId) ?: return
         val model = Models.pathFor(ctx, bot.model)
         if (model == null) {
             dao.insertMessage(Message(botId = botId, role = "error", content = "Error: no local model installed. Open Settings → Models to download one."))
             return
         }
-        val mem = dao.memoriesNow(botId).joinToString("\n") { "- " + it.text }
-        var sys = Prompts.system(bot.systemPrompt)
-        if (mem.isNotEmpty()) sys += "\n\nMemory (facts the user asked you to remember):\n$mem"
-        sys += "\n\n" + Tools.INSTRUCTIONS
-        if (toolContext.isNotEmpty()) sys += "\n\n$toolContext"
-        val history = dao.lastMessages(botId, 16).map { (if (it.role == "user") "user" else "assistant") to it.content }
-        streaming.value = streaming.value + (botId to "")
-        var out = ""
-        try {
-            out = LlmEngine.generate(model, listOf("system" to sys) + history, 512) { s -> streaming.value = streaming.value + (botId to s) }
-            dao.insertMessage(Message(botId = botId, role = "bot", content = out.ifEmpty { "…" }, model = File(model).name))
-        } catch (e: Exception) {
-            dao.insertMessage(Message(botId = botId, role = "error", content = "Error: ${e.message}"))
-        } finally { streaming.value = streaming.value - botId }
-        // Model-initiated tool request -> same approval broker, then a follow-up turn.
-        val req = Tools.parseModelRequest(out)
-        if (req != null && depth < 3) streamTurn(botId, runGated(botId, req), depth + 1)
+        val observations = StringBuilder(toolContext)
+        val steps = maxSteps.value.coerceIn(1, 12)
+        for (step in 1..steps) {
+            val mem = dao.memoriesNow(botId).joinToString("\n") { "- " + it.text }
+            var sys = Prompts.system(bot.systemPrompt)
+            if (mem.isNotEmpty()) sys += "\n\nMemory (facts the user asked you to remember):\n$mem"
+            sys += "\n\n" + Tools.INSTRUCTIONS
+            if (observations.isNotEmpty()) sys += "\n\n" + observations.toString().takeLast(3500)
+            if (step == steps) sys += "\n\nThis is the final step: answer the user now without tools."
+            val history = dao.lastMessages(botId, 12).map { (if (it.role == "user") "user" else "assistant") to it.content.take(1500) }
+            streaming.value = streaming.value + (botId to "")
+            var out = ""
+            try {
+                out = LlmEngine.generate(model, listOf("system" to sys) + history, 512) { s -> streaming.value = streaming.value + (botId to s) }
+                dao.insertMessage(Message(botId = botId, role = "bot", content = out.ifEmpty { "…" }, model = File(model).name))
+            } catch (e: Exception) {
+                dao.insertMessage(Message(botId = botId, role = "error", content = "Error: ${e.message}"))
+                return
+            } finally { streaming.value = streaming.value - botId }
+            if (LlmEngine.stopRequested) return
+            val req = Tools.parseModelRequest(out) ?: return
+            if (step == steps) return
+            event(botId, "agent.step", "step $step/$steps", result = req.summary)
+            val obs = runGated(botId, req).replaceFirst("Action result", "Observation")
+            observations.append("\n").append(obs)
+        }
     }
 
     fun stop() { LlmEngine.stopRequested = true }

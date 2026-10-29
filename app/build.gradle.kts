@@ -10,7 +10,7 @@ android {
     defaultConfig {
         applicationId = "com.ogba.app"
         minSdk = 26
-        targetSdk = 34
+        targetSdk = 28 // allows exec of the proot/Alpine sandbox from app storage (Termux approach); sideload only
         versionCode = (System.getenv("GITHUB_RUN_NUMBER") ?: "1").toInt()
         versionName = "0.1." + (System.getenv("GITHUB_RUN_NUMBER") ?: "0")
         ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
@@ -23,11 +23,19 @@ android {
         }
     }
     externalNativeBuild { cmake { path = file("src/main/cpp/CMakeLists.txt"); version = "3.22.1" } }
-    buildTypes {
-        release {
-            isMinifyEnabled = false
-            signingConfig = signingConfigs.getByName("debug")
+    val ksFile = System.getenv("OGBA_KEYSTORE_FILE")?.let { file(it) }
+    signingConfigs {
+        if (ksFile != null && ksFile.exists()) create("ogba") {
+            storeFile = ksFile
+            storePassword = System.getenv("OGBA_KEYSTORE_PASSWORD")
+            keyAlias = System.getenv("OGBA_KEY_ALIAS") ?: "ogba"
+            keyPassword = System.getenv("OGBA_KEYSTORE_PASSWORD")
         }
+    }
+    val signing = signingConfigs.findByName("ogba") ?: signingConfigs.getByName("debug")
+    buildTypes {
+        release { isMinifyEnabled = false; signingConfig = signing }
+        debug { signingConfig = signing }
     }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     kotlinOptions { jvmTarget = "17" }
@@ -47,4 +55,5 @@ dependencies {
     implementation("androidx.room:room-ktx:2.6.1")
     ksp("androidx.room:room-compiler:2.6.1")
     implementation("androidx.work:work-runtime-ktx:2.9.1")
+    implementation("org.apache.commons:commons-compress:1.26.2")
 }

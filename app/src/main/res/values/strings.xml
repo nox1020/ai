@@ -70,4 +70,13 @@
     <string name="unavailable_offline">Unavailable offline</string>
     <string name="yesterday">Yesterday</string>
     <string name="your_name">Your name</string>
+    <string name="browser">Browser</string>
+    <string name="clear">Clear</string>
+    <string name="install_linux">Install Linux (Alpine, ~4 MB)</string>
+    <string name="install_linux_desc">Your phone\'s own computer: downloads proot + Alpine minirootfs once. Until then commands run in the Android shell inside the workspace.</string>
+    <string name="agent">Agent</string>
+    <string name="auto_reads">Auto-run read-only tools</string>
+    <string name="auto_reads_desc">Search, fetch, browse and file reads run without an approval card. Actions with side effects always ask.</string>
+    <string name="max_steps">Max agent steps: %1$d</string>
+    <string name="read_only">Read-only</string>
 </resources>

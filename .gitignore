@@ -5,3 +5,6 @@ local.properties
 *.iml
 .cxx/
 app/src/main/cpp/llama.cpp/
+*.jks
+*.keystore
+keystore.properties
