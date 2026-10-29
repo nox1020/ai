@@ -19,6 +19,10 @@ object Device {
         "web.fetch" -> withContext(Dispatchers.IO) { Web.fetch(call.arg) }
         "browser.open" -> Browser.open(call.arg)
         "browser.read" -> Browser.read()
+        "browser.links" -> Browser.links()
+        "browser.click" -> Browser.click(call.arg)
+        "browser.type" -> Browser.type(call.arg)
+        "browser.back" -> Browser.back()
         "shell.run" -> { if (call.arg.isBlank()) throw ToolError("Empty command."); Sandbox.run(ctx, call.arg) }
         else -> withContext(Dispatchers.Main) { intents(ctx, call) }
     }
@@ -28,14 +32,16 @@ object Device {
     }
 
     private fun intents(ctx: Context, call: ToolCall): String = when (call.tool) {
-        "intent.open_url" -> { start(ctx, Intent(Intent.ACTION_VIEW, Uri.parse(Web.normalize(call.arg)))); "Opened ${call.arg}" }
+        "intent.open_url" -> { val safe = with(call.arg) { Web.safeUrl(this).toString() }; start(ctx, Intent(Intent.ACTION_VIEW, Uri.parse(safe))); "Opened $safe" }
         "intent.share" -> { start(ctx, Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, call.arg), "Share")); "Share sheet opened" }
         "clipboard.read" -> (ctx.getSystemService(ClipboardManager::class.java).primaryClip?.getItemAt(0)?.coerceToText(ctx)?.toString() ?: "").ifEmpty { "(clipboard empty)" }.take(2000)
         "clipboard.write" -> { ctx.getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("OGBA", call.arg)); "Copied ${call.arg.length} chars" }
         "alarm.set" -> {
             val m = Regex("""(\d{1,2}):(\d{2})\s*(.*)""").find(call.arg) ?: throw ToolError("Use: alarm.set HH:MM label")
-            start(ctx, Intent(AlarmClock.ACTION_SET_ALARM).putExtra(AlarmClock.EXTRA_HOUR, m.groupValues[1].toInt())
-                .putExtra(AlarmClock.EXTRA_MINUTES, m.groupValues[2].toInt()).putExtra(AlarmClock.EXTRA_MESSAGE, m.groupValues[3].ifBlank { "OGBA" }))
+            val hour = m.groupValues[1].toInt(); val minute = m.groupValues[2].toInt()
+            if (hour !in 0..23 || minute !in 0..59) throw ToolError("Alarm time must be 00:00 to 23:59")
+            start(ctx, Intent(AlarmClock.ACTION_SET_ALARM).putExtra(AlarmClock.EXTRA_HOUR, hour)
+                .putExtra(AlarmClock.EXTRA_MINUTES, minute).putExtra(AlarmClock.EXTRA_MESSAGE, m.groupValues[3].ifBlank { "OGBA" }))
             "Alarm requested for ${m.groupValues[1]}:${m.groupValues[2]}"
         }
         "calendar.add" -> {
