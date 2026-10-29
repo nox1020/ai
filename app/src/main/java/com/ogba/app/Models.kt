@@ -28,6 +28,8 @@ object Models {
     private fun prefs(ctx: Context) = ctx.getSharedPreferences("ogba", Context.MODE_PRIVATE)
     fun selected(ctx: Context): String? = prefs(ctx).getString("model", null)?.takeIf { File(it).exists() }
         ?: installed(ctx).firstOrNull()?.absolutePath
+    fun pathFor(ctx: Context, botModel: String): String? =
+        botModel.takeIf { it.isNotEmpty() }?.let { File(dir(ctx), it) }?.takeIf { it.exists() }?.absolutePath ?: selected(ctx)
     fun select(ctx: Context, path: String) = prefs(ctx).edit().putString("model", path).apply()
 
     /** Streams a GGUF from Hugging Face into app storage, reporting progress 0..1. */

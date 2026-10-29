@@ -33,13 +33,13 @@ class RoutineWorker(ctx: Context, p: WorkerParameters) : CoroutineWorker(ctx, p)
         val dao = AppDb.get(applicationContext).dao()
         val r = dao.routine(inputData.getLong("id", -1)) ?: return Result.success()
         val bot = dao.bot(r.botId) ?: return Result.success()
-        val model = Models.selected(applicationContext) ?: return Result.success()
+        val model = Models.pathFor(applicationContext, bot.model) ?: return Result.success()
         val mem = dao.memoriesNow(bot.id).joinToString("\n") { "- " + it.text }
-        val sys = bot.systemPrompt + (if (mem.isNotEmpty()) "\nKnown facts about the user:\n$mem" else "")
+        val sys = Prompts.system(bot.systemPrompt) + (if (mem.isNotEmpty()) "\nKnown facts about the user:\n$mem" else "")
         val out = try {
             LlmEngine.generate(model, listOf("system" to sys, "user" to r.prompt), 384)
         } catch (e: Exception) { return Result.retry() }
-        dao.insertMessage(Message(botId = bot.id, role = "assistant", content = "⏰ ${r.name}\n\n$out"))
+        dao.insertMessage(Message(botId = bot.id, role = "bot", content = "⏰ ${r.name}\n\n$out"))
         notify(applicationContext, "${bot.name} · ${r.name}", out)
         return Result.success()
     }
