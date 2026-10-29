@@ -247,6 +247,8 @@ fun ModelsPanel(vm: MainViewModel) {
     val selected by vm.selectedModel.collectAsState()
     val downloads by vm.downloads.collectAsState()
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> uri?.let { vm.import(it) } }
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val ram = remember { com.ogba.app.llm.LlmEngine.totalRamGb(ctx) }
     PanelScaffold(stringResource(R.string.models), { vm.open(Screen.Settings) }) {
         LazyColumn {
             item { SectionTitle(stringResource(R.string.installed_models).uppercase()); if (installed.isEmpty()) Text(stringResource(R.string.no_model), color = C.zinc400, fontSize = 12.sp) }
@@ -266,17 +268,22 @@ fun ModelsPanel(vm: MainViewModel) {
                 OutlinedButton(onClick = { picker.launch(arrayOf("*/*")) }, Modifier.padding(vertical = 8.dp)) { Text(stringResource(R.string.import_gguf)) }
                 SectionTitle(stringResource(R.string.download_models).uppercase())
                 Text(stringResource(R.string.download_hint), color = C.zinc500, fontSize = 11.sp)
+                Text(stringResource(R.string.device_info, ram, com.ogba.app.llm.LlmEngine.nThreads, com.ogba.app.llm.LlmEngine.nCtx), color = C.cyan300, fontSize = 11.sp, fontFamily = FontFamily.Monospace, modifier = Modifier.padding(top = 4.dp))
             }
             items(Models.catalog, key = { it.id }) { m ->
                 val p = downloads[m.id]
                 val have = installed.any { it.name == m.fileName }
                 DarkCard {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) { Text(m.title, color = C.foreground, fontSize = 13.sp); Text("~${m.sizeMb} MB", color = C.zinc500, fontSize = 11.sp) }
+                        Column(Modifier.weight(1f)) {
+                            Text(m.title, color = C.foreground, fontSize = 13.sp)
+                            Text("Q4_K_M · ~${m.sizeMb} MB · " + stringResource(R.string.ram_hint, m.ramGb) + (if (m.note.isNotEmpty()) " · ${m.note}" else ""), color = if (ram + 0.3f < m.ramGb) C.rose400 else C.zinc500, fontSize = 11.sp)
+                        }
                         if (have) Badge(stringResource(R.string.ready), C.emerald)
                         else if (p == null) Button(onClick = { vm.download(m) }, colors = ButtonDefaults.buttonColors(containerColor = C.blue)) { Text(stringResource(R.string.download), fontSize = 12.sp) }
+                        else TextButton(onClick = { vm.cancelDownload(m) }) { Text(stringResource(R.string.cancel), fontSize = 12.sp) }
                     }
-                    if (p != null) LinearProgressIndicator(progress = { p }, Modifier.fillMaxWidth().padding(top = 8.dp), color = C.blue)
+                    if (p != null) { LinearProgressIndicator(progress = { p }, Modifier.fillMaxWidth().padding(top = 8.dp), color = C.blue); Text("${(p * 100).toInt()}% · " + stringResource(R.string.bg_download), color = C.zinc500, fontSize = 10.sp) }
                 }
             }
         }

@@ -27,13 +27,24 @@ val DEFAULT_BOTS = listOf(
         systemPrompt = "You are a super-powered assistant. Be friendly, fast, and proactive."),
 )
 
+/** Casual, spoken-style companion used by voice mode by default. */
+val VOICE_BOT = Bot(name = "OGBA Voice", role = "Hands-free voice companion", avatar = "🎙️", accentColor = "#f43f5e", pinned = true,
+    description = "Talk naturally; short spoken replies in Persian or English.",
+    systemPrompt = "You are OGBA, a witty, warm voice companion running entirely on the user's phone. " +
+        "You are talking out loud: keep replies short (one to three sentences), casual and natural, like a friend chatting. " +
+        "No markdown, no lists, no emojis, no code unless asked. Always answer in the same language the user speaks (Persian or English). " +
+        "Ask a quick follow-up question when it keeps the conversation going.")
+
 class App : Application() {
     override fun onCreate() {
         super.onCreate()
         RoutineWorker.createChannel(this)
+        DownloadWorker.createChannel(this)
+        com.ogba.app.llm.LlmEngine.configure(this)
         CoroutineScope(Dispatchers.IO).launch {
             val dao = AppDb.get(this@App).dao()
             if (dao.botCount() == 0) DEFAULT_BOTS.forEach { dao.insertBot(it) }
+            if (dao.botByName(VOICE_BOT.name) == null) dao.insertBot(VOICE_BOT)
         }
     }
 }

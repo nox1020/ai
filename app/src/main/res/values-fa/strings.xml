@@ -79,4 +79,16 @@
     <string name="auto_reads_desc">جستجو، خواندن صفحه، مرور و خواندن فایل بدون کارت تأیید اجرا می‌شوند. اقدامات دارای اثر همیشه تأیید می‌خواهند.</string>
     <string name="max_steps">حداکثر گام‌های عامل: %1$d</string>
     <string name="read_only">فقط خواندنی</string>
+    <string name="tts_missing">صدای %1$s برای تبدیل متن به گفتار نصب نیست. از تنظیمات اندروید ← تبدیل متن به گفتار نصبش کنید (مثلاً Google TTS).</string>
+    <string name="stt_missing">تشخیص گفتار آفلاین برای %1$s نصب نیست. زبان را از تنظیمات گفتار گوشی دانلود کنید.</string>
+    <string name="mic_permission">حالت صوتی به مجوز میکروفون نیاز دارد.</string>
+    <string name="v_listening">در حال گوش دادن…</string>
+    <string name="v_thinking">در حال فکر کردن…</string>
+    <string name="v_speaking">در حال صحبت — برای قطع کردن بزنید</string>
+    <string name="v_idle">برای صحبت بزنید</string>
+    <string name="v_hint">کاملاً روی دستگاه: تشخیص گفتار آفلاین ← مدل محلی ← TTS اندروید. پاسخ خوانده می‌شود و دوباره خودکار گوش می‌دهد.</string>
+    <string name="v_end">پایان گفتگوی صوتی</string>
+    <string name="ram_hint">نیاز به حدود %1$d گیگ رم</string>
+    <string name="device_info">این دستگاه: %1$.1f گیگ رم · %2$d رشته · کانتکست %3$d</string>
+    <string name="bg_download">دانلود در پس‌زمینه، خودکار ادامه می‌یابد</string>
 </resources>

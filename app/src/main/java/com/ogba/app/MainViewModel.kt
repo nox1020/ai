@@ -21,7 +21,7 @@ data class Approval(val requestId: String, val botId: Long, val call: ToolCall, 
 /** Inline tool lifecycle event card: tool.started / tool.completed / tool.failed / tool.denied / tool.expired */
 data class ToolEvent(val id: Long, val botId: Long, val type: String, val tool: String, val result: String? = null, val error: String? = null)
 
-enum class Screen { Chat, Computer, Browser, Marketplace, Audit, Settings, Models, Memory, Routines }
+enum class Screen { Chat, Voice, Computer, Browser, Marketplace, Audit, Settings, Models, Memory, Routines }
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class MainViewModel(app: Application) : AndroidViewModel(app) {
@@ -57,6 +57,22 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun setMaxSteps(v: Int) { prefs.edit().putInt("max_steps", v).apply(); maxSteps.value = v }
 
     init {
+        viewModelScope.launch {
+            androidx.work.WorkManager.getInstance(ctx).getWorkInfosByTagFlow("model-download").collect { infos ->
+                val map = mutableMapOf<String, Float>()
+                var finished = false
+                infos.forEach { w ->
+                    val id = w.tags.firstOrNull { it.startsWith("dl-id:") }?.removePrefix("dl-id:") ?: return@forEach
+                    when (w.state) {
+                        androidx.work.WorkInfo.State.RUNNING, androidx.work.WorkInfo.State.ENQUEUED, androidx.work.WorkInfo.State.BLOCKED -> map[id] = w.progress.getFloat("p", 0f)
+                        androidx.work.WorkInfo.State.SUCCEEDED -> finished = true
+                        else -> {}
+                    }
+                }
+                downloads.value = map
+                if (finished) refreshModels()
+            }
+        }
         Browser.showScreen = { screen.value = Screen.Browser }
         viewModelScope.launch { bots.first { it.isNotEmpty() }.let { if (currentBotId.value < 0) currentBotId.value = it.first().id } }
     }
@@ -75,16 +91,25 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** Send flow == ChatWindow.handleSendMessage -> POST message -> SSE stream_turn. */
-    fun send(text: String) {
+    val busy = MutableStateFlow(false)
+    @Volatile private var voiceTurn = false
+
+    fun send(text: String, voice: Boolean = false) {
         val botId = currentBotId.value
-        if (text.isBlank() || botId < 0 || streaming.value.containsKey(botId)) return
-        viewModelScope.launch {
+        if (text.isBlank() || botId < 0 || busy.value) return
+        busy.value = true
+        voiceTurn = voice
+        viewModelScope.launch { try { sendInner(botId, text) } finally { busy.value = false } }
+    }
+
+    private suspend fun sendInner(botId: Long, text: String) {
+        run {
             dao.insertMessage(Message(botId = botId, role = "user", content = text.trim()))
             val t = text.trim()
             if (t.startsWith("/remember ")) {
                 dao.insertMemory(Memory(botId = botId, text = t.removePrefix("/remember ").trim()))
                 streamTurn(botId, "The user asked you to remember: \"${t.removePrefix("/remember ").trim()}\". It is saved in memory; confirm briefly.")
-                return@launch
+                return
             }
             var toolContext = ""
             val call = try { Tools.parseUserCommand(t) } catch (e: ToolError) {
@@ -150,6 +175,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             sys += "\n\n" + Tools.INSTRUCTIONS
             if (observations.isNotEmpty()) sys += "\n\n" + observations.toString().takeLast(3500)
             if (step == steps) sys += "\n\nThis is the final step: answer the user now without tools."
+            if (voiceTurn) sys += "\n\n" + Prompts.VOICE_STYLE
             val history = dao.lastMessages(botId, 12).map { (if (it.role == "user") "user" else "assistant") to it.content.take(1500) }
             streaming.value = streaming.value + (botId to "")
             var out = ""
@@ -196,18 +222,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private fun refreshModels() { installed.value = Models.installed(ctx); selectedModel.value = Models.selected(ctx) }
     fun selectModel(f: File) { Models.select(ctx, f.absolutePath); refreshModels() }
     fun deleteModel(f: File) { f.delete(); refreshModels() }
-    fun download(m: CatalogModel) {
-        if (downloads.value.containsKey(m.id)) return
-        downloads.value = downloads.value + (m.id to 0f)
-        viewModelScope.launch {
-            try {
-                val f = withContext(Dispatchers.IO) { Models.download(ctx, m) { p -> downloads.value = downloads.value + (m.id to p) } }
-                if (selectedModel.value == null) Models.select(ctx, f.absolutePath)
-            } catch (e: Exception) { toast.value = "Download failed: ${e.message}" }
-            downloads.value = downloads.value - m.id
-            refreshModels()
-        }
-    }
+    fun download(m: CatalogModel) = Models.enqueue(ctx, m)
+    fun cancelDownload(m: CatalogModel) = Models.cancel(ctx, m)
     fun import(uri: Uri) = viewModelScope.launch {
         try { val f = withContext(Dispatchers.IO) { Models.import(ctx, uri) }; Models.select(ctx, f.absolutePath) }
         catch (e: Exception) { toast.value = "Import failed: ${e.message}" }

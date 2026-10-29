@@ -69,6 +69,7 @@ fun ChatWindow(vm: MainViewModel, openDrawer: () -> Unit) {
             Spacer(Modifier.width(10.dp))
             Text(bot?.name ?: "OGBA", color = C.foreground, fontWeight = FontWeight.Bold, fontSize = 14.sp, maxLines = 1, modifier = Modifier.weight(1f))
             if (bot != null) ModelPicker(vm, bot)
+            IconButton(onClick = { vm.open(Screen.Voice) }) { Text("🎙", fontSize = 16.sp) }
             IconButton(onClick = { vm.open(Screen.Computer) }) { Icon(Icons.Default.Info, stringResource(R.string.computer), tint = C.zinc400, modifier = Modifier.size(18.dp)) }
         }
         HorizontalDivider(color = C.headerBorder)

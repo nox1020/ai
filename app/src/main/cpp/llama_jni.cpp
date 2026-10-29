@@ -7,7 +7,9 @@
 
 struct Handle {
     llama_model *model = nullptr;
+    llama_context *ctx = nullptr;          // persistent context -> KV cache reuse across turns
     llama_context_params cparams;
+    std::vector<llama_token> cached;       // tokens currently held in the KV cache (seq 0)
 };
 
 static size_t utf8_complete_len(const std::string &s) {
@@ -40,6 +42,10 @@ Java_com_ogba_app_llm_LlamaNative_load(JNIEnv *env, jobject, jstring jpath, jint
     h->cparams.n_batch = 512;
     h->cparams.n_threads = nThreads;
     h->cparams.n_threads_batch = nThreads;
+    h->cparams.n_ubatch = 512;
+    h->ctx = llama_init_from_model(model, h->cparams);
+    if (!h->ctx) { llama_model_free(model); delete h; return 0; }
+    LOGI("loaded model n_ctx=%d threads=%d", nCtx, nThreads);
     return (jlong) h;
 }
 
@@ -47,6 +53,7 @@ extern "C" JNIEXPORT void JNICALL
 Java_com_ogba_app_llm_LlamaNative_free(JNIEnv *, jobject, jlong ptr) {
     auto *h = (Handle *) ptr;
     if (!h) return;
+    if (h->ctx) llama_free(h->ctx);
     llama_model_free(h->model);
     delete h;
 }
@@ -88,11 +95,19 @@ Java_com_ogba_app_llm_LlamaNative_generate(JNIEnv *env, jobject, jlong ptr, jobj
     if (limit < 64) limit = 64;
     if ((int) toks.size() > limit) toks.erase(toks.begin(), toks.end() - limit);
 
-    llama_context *ctx = llama_init_from_model(h->model, h->cparams);
-    if (!ctx) return -3;
-    for (size_t i = 0; i < toks.size(); i += 512) {
+    llama_context *ctx = h->ctx;
+    llama_memory_t mem = llama_get_memory(ctx);
+    // KV cache reuse: keep the longest common prefix with what is already decoded.
+    size_t keep = 0;
+    while (keep < h->cached.size() && keep < toks.size() && h->cached[keep] == toks[keep]) keep++;
+    if (keep == toks.size() && keep > 0) keep--;   // always re-decode at least the last prompt token
+    if (!llama_memory_seq_rm(mem, 0, keep, -1)) { llama_memory_clear(mem); keep = 0; }
+    h->cached.resize(keep);
+    LOGI("prompt %zu tokens, reused %zu from KV cache", toks.size(), keep);
+    for (size_t i = keep; i < toks.size(); i += 512) {
         int cnt = std::min<int>(512, toks.size() - i);
-        if (llama_decode(ctx, llama_batch_get_one(toks.data() + i, cnt)) != 0) { llama_free(ctx); return -4; }
+        if (llama_decode(ctx, llama_batch_get_one(toks.data() + i, cnt)) != 0) { llama_memory_clear(mem); h->cached.clear(); return -4; }
+        h->cached.insert(h->cached.end(), toks.begin() + i, toks.begin() + i + cnt);
     }
     llama_sampler *smpl = llama_sampler_chain_init(llama_sampler_chain_default_params());
     llama_sampler_chain_add(smpl, llama_sampler_init_top_k(40));
@@ -118,9 +133,10 @@ Java_com_ogba_app_llm_LlamaNative_generate(JNIEnv *env, jobject, jlong ptr, jobj
             if (!cont) break;
         }
         llama_token t = tok;
+        if ((int) h->cached.size() + 1 >= (int) h->cparams.n_ctx) break;
         if (llama_decode(ctx, llama_batch_get_one(&t, 1)) != 0) break;
+        h->cached.push_back(t);
     }
     llama_sampler_free(smpl);
-    llama_free(ctx);
     return produced;
 }

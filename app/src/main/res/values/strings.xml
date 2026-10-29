@@ -79,4 +79,16 @@
     <string name="auto_reads_desc">Search, fetch, browse and file reads run without an approval card. Actions with side effects always ask.</string>
     <string name="max_steps">Max agent steps: %1$d</string>
     <string name="read_only">Read-only</string>
+    <string name="tts_missing">No %1$s voice installed for text-to-speech. Install it in Android Settings → Text-to-speech (e.g. Google TTS / Sherpa TTS).</string>
+    <string name="stt_missing">Offline speech recognition for %1$s is not installed. Download the language in your phone\'s speech settings.</string>
+    <string name="mic_permission">Microphone permission is needed for voice mode.</string>
+    <string name="v_listening">Listening…</string>
+    <string name="v_thinking">Thinking…</string>
+    <string name="v_speaking">Speaking — tap to interrupt</string>
+    <string name="v_idle">Tap to talk</string>
+    <string name="v_hint">Fully on-device: offline speech recognition → local model → Android TTS. Replies are spoken and it listens again automatically.</string>
+    <string name="v_end">End voice chat</string>
+    <string name="ram_hint">needs ~%1$d GB RAM</string>
+    <string name="device_info">This device: %1$.1f GB RAM · %2$d perf threads · context %3$d</string>
+    <string name="bg_download">downloading in background, resumes automatically</string>
 </resources>

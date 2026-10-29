@@ -28,6 +28,7 @@ import kotlinx.coroutines.flow.Flow
     @Query("SELECT * FROM Bot ORDER BY pinned DESC, id") fun bots(): Flow<List<Bot>>
     @Query("SELECT * FROM Bot WHERE id=:id") suspend fun bot(id: Long): Bot?
     @Query("SELECT COUNT(*) FROM Bot") suspend fun botCount(): Int
+    @Query("SELECT * FROM Bot WHERE name=:name LIMIT 1") suspend fun botByName(name: String): Bot?
     @Insert suspend fun insertBot(b: Bot): Long
     @Update suspend fun updateBot(b: Bot)
     @Delete suspend fun deleteBot(b: Bot)

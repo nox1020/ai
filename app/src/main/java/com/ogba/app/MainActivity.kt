@@ -54,6 +54,7 @@ fun Dashboard(vm: MainViewModel) {
                 Screen.Chat -> ChatWindow(vm) { scope.launch { drawer.open() } }
                 Screen.Computer -> ComputerPanel(vm)
                 Screen.Browser -> BrowserPanel(vm)
+                Screen.Voice -> VoiceScreen(vm)
                 Screen.Marketplace -> Marketplace(vm)
                 Screen.Audit -> AuditPanel(vm)
                 Screen.Settings -> SettingsPanel(vm)

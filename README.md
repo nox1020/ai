@@ -32,6 +32,13 @@ UI, theme (zinc/dark palette, mascot avatars, pill composer, Permission Broker a
 ### Updates
 Since v0.1.6 every APK is signed with the same release key, so new versions install over old ones and keep your data. Builds ≤ v0.1.4 used a throwaway debug key: uninstall those once.
 
+
+### Voice, models & speed (v0.1.9+)
+- **Hands-free voice mode** (🎙 in the chat header): on-device speech recognition (Persian `fa-IR` / English) → local model → Android TextToSpeech, sentence-by-sentence while generating, auto-listens after each reply, tap the orb to interrupt. Default casual "OGBA Voice" bot with short spoken-style replies.
+- **Models**: Qwen2.5 0.5B/1.5B/3B, Qwen3 1.7B/4B (thinking hidden, `/no_think`), Llama 3.2 1B/3B, Gemma 3 1B/4B — all Q4_K_M with RAM hints.
+- **Speed**: persistent llama.cpp context with KV-cache prefix reuse, threads = performance cores, context 4096 on ≥6 GB RAM devices (else 2048), Arm KleidiAI kernels.
+- **Downloads**: WorkManager foreground worker with HTTP Range resume; survives app close and network drops.
+
 ### Install
 Download `ogba.apk` from the [latest release](https://github.com/nox1020/ai/releases/latest). arm64 phones (and x86_64 emulators), Android 8.0+. Recommended: ≥4 GB RAM; start with Qwen2.5 0.5B.
 
