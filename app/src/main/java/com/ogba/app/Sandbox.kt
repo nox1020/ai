@@ -14,7 +14,7 @@ import java.util.zip.GZIPInputStream
 
 /**
  * OGBA's own "computer": an Alpine Linux userland run through proot inside app storage
- * (Termux/UserLAnd approach). Falls back to Android's /system/bin/sh (toybox) in the workspace.
+ * (Termux/UserLAnd approach). Never falls back to the unrestricted Android host shell.
  */
 object Sandbox {
     private const val PROOT_VER = "5.3.0"
@@ -29,7 +29,7 @@ object Sandbox {
     private fun proot(ctx: Context) = File(ctx.filesDir, "bin/proot")
     fun linuxInstalled(ctx: Context) = File(root(ctx), "bin/busybox").exists() && proot(ctx).canExecute()
 
-    private fun log(kind: String, text: String) { terminal.value = (terminal.value + Line(kind, text)).takeLast(400) }
+    private fun log(kind: String, text: String) { terminal.value = (terminal.value + Line(kind, text.take(3000))).takeLast(400) }
     fun clear() { terminal.value = emptyList() }
 
     suspend fun installLinux(ctx: Context) = withContext(Dispatchers.IO) {
@@ -44,11 +44,22 @@ object Sandbox {
             TarArchiveInputStream(GZIPInputStream(URL(url).openStream().buffered())).use { tar ->
                 var e = tar.nextEntry
                 while (e != null) {
-                    val out = File(r, e.name)
+                    val out = File(r, e.name).canonicalFile
+                    if (e.name.startsWith("/") || (out.path != r.canonicalPath && !out.path.startsWith(r.canonicalPath + File.separator))) {
+                        throw ToolError("Unsafe path in Alpine archive: ${e.name}")
+                    }
                     when {
                         e.isDirectory -> out.mkdirs()
-                        e.isSymbolicLink -> { out.parentFile?.mkdirs(); out.delete(); try { Os.symlink(e.linkName, out.path) } catch (_: Exception) {} }
-                        e.isLink -> { out.parentFile?.mkdirs(); File(r, e.linkName).takeIf { it.exists() }?.copyTo(out, true) }
+                        e.isSymbolicLink -> {
+                            if (e.linkName.contains("..")) throw ToolError("Unsafe archive symlink")
+                            out.parentFile?.mkdirs(); out.delete()
+                            Os.symlink(e.linkName, out.path)
+                        }
+                        e.isLink -> {
+                            val src = File(r, e.linkName).canonicalFile
+                            if (!src.path.startsWith(r.canonicalPath + File.separator)) throw ToolError("Unsafe archive hardlink")
+                            out.parentFile?.mkdirs(); src.takeIf { it.isFile }?.copyTo(out, true)
+                        }
                         else -> { out.parentFile?.mkdirs(); out.outputStream().use { tar.copyTo(it) }; if (e.mode and 0b001_001_001 != 0) out.setExecutable(true, false) }
                     }
                     e = tar.nextEntry
@@ -58,7 +69,7 @@ object Sandbox {
             File(r, "root").mkdirs()
             log("sys", "Alpine Linux installed. Try: apk add python3")
         } catch (e: Exception) {
-            log("sys", "Linux install failed: ${e.message}. Using Android shell fallback.")
+            log("sys", "Linux install failed: ${e.message}. Installation is required before commands can run.")
         } finally { installing.value = null }
     }
 
@@ -66,15 +77,14 @@ object Sandbox {
     suspend fun run(ctx: Context, cmd: String, timeoutSec: Long = 180): String = withContext(Dispatchers.IO) {
         val ws = Tools.workspaceRoot(ctx)
         val tmp = File(ctx.filesDir, "tmp").apply { mkdirs() }
-        val linux = linuxInstalled(ctx)
-        log("cmd", (if (linux) "alpine" else "android") + ":~$ " + cmd)
-        val pb = if (linux) ProcessBuilder(
+        if (!linuxInstalled(ctx)) throw ToolError("Alpine computer is not installed. Install it in the Computer panel before running commands.")
+        log("cmd", "alpine:~$ " + cmd)
+        val pb = ProcessBuilder(
             proot(ctx).path, "--kill-on-exit", "-0", "-r", root(ctx).path,
             "-b", "/dev", "-b", "/proc", "-b", "/sys", "-b", "${ws.path}:/root/workspace", "-w", "/root/workspace",
             "/usr/bin/env", "-i", "HOME=/root", "TERM=xterm", "LANG=C.UTF-8",
             "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", "/bin/sh", "-c", cmd
         ).apply { environment()["PROOT_TMP_DIR"] = tmp.path; environment()["PROOT_NO_SECCOMP"] = "1" }
-        else ProcessBuilder("/system/bin/sh", "-c", cmd).directory(ws).apply { environment()["HOME"] = ws.path; environment()["TMPDIR"] = tmp.path }
         pb.redirectErrorStream(true)
         val sb = StringBuilder()
         val proc = try { pb.start() } catch (e: Exception) { log("out", "error: ${e.message}"); return@withContext "error: ${e.message}" }
