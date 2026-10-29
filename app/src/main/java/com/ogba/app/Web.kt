@@ -6,8 +6,13 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import org.json.JSONArray
 import java.net.HttpURLConnection
+import java.net.InetAddress
+import java.net.Inet6Address
+import java.net.URI
+import org.json.JSONObject
 import java.net.URL
 import java.net.URLDecoder
+import java.util.Locale
 import java.net.URLEncoder
 import kotlin.coroutines.resume
 
@@ -16,15 +21,20 @@ object Web {
     private const val UA = "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Mobile Safari/537.36"
 
     private fun get(url: String, max: Int = 1_500_000): String {
-        var u = URL(url); var hops = 0
+        var u = safeUrl(url); var hops = 0
         while (true) {
             val c = u.openConnection() as HttpURLConnection
             c.instanceFollowRedirects = false; c.connectTimeout = 15000; c.readTimeout = 20000
             c.setRequestProperty("User-Agent", UA); c.setRequestProperty("Accept-Language", "en,fa;q=0.8")
             val code = c.responseCode
-            if (code in 300..399 && hops++ < 6) { u = URL(u, c.getHeaderField("Location")); continue }
+            if (code in 300..399 && hops++ < 6) {
+                val location = c.getHeaderField("Location") ?: throw ToolError("Redirect has no location")
+                val next = URL(u, location).toString()
+                c.disconnect(); u = safeUrl(next); continue
+            }
+            if (code in 300..399) { c.disconnect(); throw ToolError("Too many redirects") }
             if (code >= 400) throw ToolError("HTTP $code for $u")
-            val bytes = c.inputStream.use { it.readNBytesCompat(max) }
+            val bytes = try { c.inputStream.use { it.readNBytesCompat(max) } } finally { c.disconnect() }
             return String(bytes, Charsets.UTF_8)
         }
     }
@@ -63,7 +73,31 @@ object Web {
         return "Title: $title\nURL: $u\n\n" + text.take(limit) + if (text.length > limit) "\n…(truncated)" else ""
     }
 
-    fun normalize(url: String) = url.trim().let { if (it.startsWith("http://") || it.startsWith("https://")) it else "https://$it" }
+    fun normalize(url: String): String = url.trim().let {
+        if (it.startsWith("http://", true) || it.startsWith("https://", true)) it else "https://$it"
+    }
+
+    /**
+     * The model and remote pages are untrusted. Do not turn web.fetch/browser.open
+     * into an internal-network or metadata endpoint scanner (including redirects).
+     */
+    fun safeUrl(url: String): URL {
+        val uri = try { URI(normalize(url)) } catch (_: Exception) { throw ToolError("Invalid URL") }
+        if (uri.scheme !in listOf("http", "https") || uri.host.isNullOrBlank() || uri.rawUserInfo != null) {
+            throw ToolError("Only public HTTP(S) URLs are supported")
+        }
+        val host = uri.host.lowercase(Locale.ROOT).trimEnd('.')
+        if (host == "localhost" || host.endsWith(".localhost") || host.endsWith(".local") || host.endsWith(".internal")) {
+            throw ToolError("Local network addresses are not allowed")
+        }
+        val addresses = try { InetAddress.getAllByName(host) } catch (_: Exception) { throw ToolError("Cannot resolve host: $host") }
+        if (addresses.isEmpty() || addresses.any { ip ->
+                ip.isLoopbackAddress || ip.isSiteLocalAddress || ip.isLinkLocalAddress || ip.isAnyLocalAddress || ip.isMulticastAddress ||
+                    (ip is Inet6Address && ip.address.isNotEmpty() && ((ip.address[0].toInt() and 0xfe) == 0xfc)) ||
+                    (ip.address.size == 4 && (ip.address[0].toInt() and 255) == 100 && ((ip.address[1].toInt() and 255) in 64..127))
+            }) throw ToolError("Private or restricted network address blocked")
+        return uri.toURL()
+    }
 }
 
 /** In-app WebView browser ("the computer's browser") the agent drives and the user can watch. */
@@ -75,7 +109,7 @@ object Browser {
     var showScreen: () -> Unit = {}
 
     suspend fun open(u: String): String {
-        val target = Web.normalize(u)
+        val target = withContext(Dispatchers.IO) { Web.safeUrl(u).toString() }
         withContext(Dispatchers.Main) { showScreen(); url.value = target }
         val wv = withTimeoutOrNull(5000) { while (webView == null) delay(100); webView } ?: throw ToolError("Browser not available")
         val d = CompletableDeferred<Unit>(); pageDone = d
@@ -93,4 +127,62 @@ object Browser {
         val text = try { JSONArray("[$raw]").getString(0) } catch (e: Exception) { raw }
         return "URL: ${url.value}\n" + text.take(limit) + if (text.length > limit) "\n…(truncated)" else ""
     }
+
+    private suspend fun evaluate(script: String): String {
+        val wv = webView ?: throw ToolError("Browser is not open. Use browser.open first.")
+        return withContext(Dispatchers.Main) {
+            suspendCancellableCoroutine<String> { c ->
+                wv.evaluateJavascript(script) { result -> if (c.isActive) c.resume(result ?: "null") }
+            }
+        }
+    }
+
+    /** Numbered link list also supports click @INDEX for pages without stable CSS selectors. */
+    suspend fun links(): String {
+        val script = """(function() {
+            return JSON.stringify(Array.from(document.querySelectorAll('a,button,input[type=submit]')).slice(0,80)
+                .map(function(e,i) { return {index:i, text:(e.innerText||e.value||e.getAttribute('aria-label')||'').trim().slice(0,100), href:e.href||''}; }));
+        })()"""
+        val raw = evaluate(script)
+        val data = try { JSONArray(JSONArray("[$raw]").getString(0)) } catch (_: Exception) { return "No clickable elements found" }
+        return data.toString().take(4000)
+    }
+
+    private fun selectorScript(selector: String): String {
+        val s = selector.trim()
+        if (s.isEmpty()) throw ToolError("Empty browser selector")
+        if (s.startsWith("@")) {
+            val idx = s.drop(1).toIntOrNull() ?: throw ToolError("Use @0, @1, ... or a CSS selector")
+            if (idx !in 0..79) throw ToolError("Browser index out of range")
+            return "document.querySelectorAll('a,button,input[type=submit]')[$idx]"
+        }
+        return "document.querySelector(${JSONObject.quote(s)})"
+    }
+
+    /** Click and type always require an approval from the owner. */
+    suspend fun click(selector: String): String {
+        val raw = evaluate("(function(){var e=${selectorScript(selector)};if(!e)return 'not found';e.click();return 'clicked';})()")
+        return raw.trim('"').take(150)
+    }
+
+    suspend fun type(argument: String): String {
+        val sel = argument.substringBefore("|").trim()
+        val value = argument.substringAfter("|", "").trimStart()
+        if (sel.isEmpty() || !argument.contains("|")) throw ToolError("Use browser.type SELECTOR | TEXT")
+        if (value.length > 4000) throw ToolError("Browser input too long")
+        val raw = evaluate("(function(){var e=${selectorScript(sel)};if(!e)return 'not found';" +
+            "if(!('value' in e))return 'not an input';e.focus();e.value=${JSONObject.quote(value)};" +
+            "e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}));return 'typed';})()")
+        return raw.trim('"').take(150)
+    }
+
+    suspend fun back(): String {
+        withContext(Dispatchers.Main) {
+            val wv = webView ?: throw ToolError("Browser is not open")
+            if (!wv.canGoBack()) throw ToolError("No browser history")
+            wv.goBack()
+        }
+        return "Back navigation requested"
+    }
+
 }

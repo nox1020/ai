@@ -68,7 +68,7 @@ fun ComputerPanel(vm: MainViewModel) {
     LaunchedEffect(lines.size) { if (lines.isNotEmpty()) list.scrollToItem(lines.size - 1) }
     PanelScaffold(stringResource(R.string.computer), { vm.open(Screen.Chat) }) {
         Row(Modifier.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Badge(if (linux) "Alpine Linux · proot" else "Android shell (fallback)", if (linux) C.emerald else C.amber400)
+            Badge(if (linux) "Alpine Linux · proot" else "Linux not installed", if (linux) C.emerald else C.amber400)
             Spacer(Modifier.weight(1f))
             TextButton(onClick = { vm.open(Screen.Browser) }) { Text("🌐 " + stringResource(R.string.browser), fontSize = 12.sp) }
             TextButton(onClick = { Sandbox.clear() }) { Text(stringResource(R.string.clear), fontSize = 12.sp) }
@@ -87,7 +87,9 @@ fun ComputerPanel(vm: MainViewModel) {
         Row(Modifier.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             OutlinedTextField(cmd, { cmd = it }, Modifier.weight(1f), placeholder = { Text("$ ls -la", fontFamily = FontFamily.Monospace) }, singleLine = true, colors = darkFieldColors(),
                 textStyle = androidx.compose.ui.text.TextStyle(fontFamily = FontFamily.Monospace, fontSize = 12.sp, color = C.foreground))
-            IconButton(onClick = { val c = cmd; cmd = ""; if (c.isNotBlank()) scope.launch { Sandbox.run(ctx, c) } }) { Icon(Icons.Default.PlayArrow, null, tint = C.emerald) }
+            IconButton(enabled = linux, onClick = { val c = cmd; cmd = ""; if (c.isNotBlank()) scope.launch {
+                try { Sandbox.run(ctx, c) } catch (ex: Exception) { vm.toast.value = ex.message ?: "Command failed" }
+            } }) { Icon(Icons.Default.PlayArrow, null, tint = C.emerald) }
         }
     }
 }
@@ -109,7 +111,14 @@ fun BrowserPanel(vm: MainViewModel) {
         androidx.compose.ui.viewinterop.AndroidView(modifier = Modifier.fillMaxSize(), factory = { c ->
             android.webkit.WebView(c).apply {
                 settings.javaScriptEnabled = true; settings.domStorageEnabled = true
+                settings.allowFileAccess = false; settings.allowContentAccess = false
+                settings.allowFileAccessFromFileURLs = false; settings.allowUniversalAccessFromFileURLs = false
+                settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_NEVER_ALLOW
+                settings.safeBrowsingEnabled = true
                 webViewClient = object : android.webkit.WebViewClient() {
+                    override fun shouldOverrideUrlLoading(view: android.webkit.WebView, req: android.webkit.WebResourceRequest): Boolean {
+                        return req.url.scheme !in listOf("http", "https")
+                    }
                     override fun onPageFinished(view: android.webkit.WebView, u: String) { Browser.url.value = u; Browser.title.value = view.title ?: ""; Browser.pageDone?.complete(Unit) }
                 }
                 Browser.webView = this
@@ -125,7 +134,9 @@ fun Marketplace(vm: MainViewModel) {
     val local = listOf("workspace.list" to "List files in the local sandbox", "workspace.read" to "Read a sandbox file", "workspace.write" to "Write a sandbox file",
         "local.calc" to "Calculator", "local.time" to "Device clock", "local.note" to "Save a note", "local.notes" to "Read notes",
         "web.search" to "DuckDuckGo search (no API key)", "web.fetch" to "Download a page as readable text", "browser.open" to "Open a page in the computer's browser",
-        "browser.read" to "Read the open browser page", "shell.run" to "Run a command on the OGBA computer (Alpine/proot)", "intent.open_url" to "Open a URL in another app",
+        "browser.read" to "Read the open browser page", "browser.links" to "List clickable elements",
+        "browser.click" to "Click an element (approval required)", "browser.type" to "Type into a form (approval required)",
+        "browser.back" to "Browser back", "bot.delegate" to "Delegate a task to another bot (approval required)", "shell.run" to "Run a command on the OGBA computer (Alpine/proot)", "intent.open_url" to "Open a URL in another app",
         "intent.share" to "Android share sheet", "clipboard.read" to "Read clipboard", "clipboard.write" to "Write clipboard", "alarm.set" to "Set an alarm", "calendar.add" to "Add a calendar event")
     val cloud = listOf("GitHub", "Gmail", "Slack", "Notion", "Linear", "Google Drive")
     PanelScaffold(stringResource(R.string.plugins), { vm.open(Screen.Chat) }) {
