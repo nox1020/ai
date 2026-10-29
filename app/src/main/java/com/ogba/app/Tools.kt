@@ -51,7 +51,7 @@ object Tools {
     private val aliases = mapOf("calc" to "local.calc", "time" to "local.time", "note" to "local.note", "notes" to "local.notes",
         "search" to "web.search", "fetch" to "web.fetch", "shell" to "shell.run", "open_url" to "intent.open_url", "share" to "intent.share")
     // Accept only a directive on its own line at the end of a model reply.
-    private val modelRe = Regex("""(?m)^\[\[tool:([\w.]+)(?:[ \t]+([\s\S]*?))?]]\s*$""")
+    private val modelRe = Regex("""(?m)^\[\[tool:([\w.]+)(?:[ \t]+([\s\S]*?))?]][ \t\r\n]*\z""")
 
     const val INSTRUCTIONS = """You are an agent on the user's phone. You may use tools, one per reply. To use a tool, write a one-line Plan, then on the last line ONLY the call, e.g.:
 Plan: search the web for the weather.
