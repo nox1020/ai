@@ -17,6 +17,10 @@ All inference runs on-device with [llama.cpp](https://github.com/ggml-org/llama.
 - **Model manager** – one-tap download from Hugging Face (Qwen2.5 0.5B / 1.5B Instruct, Llama 3.2 1B, Gemma 3 1B, Q4_K_M) or import any `.gguf` file. After that, airplane mode is fine.
 - **Persian (RTL) and English** UI, follows system / per-app language.
 
+
+### Parity with open-grok-bot
+UI, theme (zinc/dark palette, mascot avatars, pill composer, Permission Broker approval cards, tool-event cards, audit trail, plugins, settings) and chat flow (`Current Date & Time` system-prompt prefix, `/workspace list|read|write` command grammar, request → approve/deny/expire → tool context → streamed reply) are re-implemented natively in Compose. The upstream repo has no LICENSE file, so its code is not copied verbatim; behaviour and design are reproduced. Cloud-only parts (MUAPI, Composio connectors, Docker computer provider, image upload) are shown as "Unavailable offline".
+
 ### Install
 Download `ogba.apk` from the [latest release](https://github.com/nox1020/ai/releases/latest). arm64 phones (and x86_64 emulators), Android 8.0+. Recommended: ≥4 GB RAM; start with Qwen2.5 0.5B.
 
